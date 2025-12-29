@@ -1,0 +1,48 @@
+name: Daily SEO-Optimized Blog Post
+
+on:
+  schedule:
+    # Run twice daily: 9 AM and 5 PM UTC (adjust to your timezone)
+    - cron: '0 9 * * *'   # 9 AM UTC daily
+    - cron: '0 17 * * *'  # 5 PM UTC daily
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  post-blog:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+        
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        
+    - name: Generate and post blog
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        G_REFRESH_TOKEN: ${{ secrets.G_REFRESH_TOKEN }}
+        G_CLIENT_ID: ${{ secrets.G_CLIENT_ID }}
+        G_CLIENT_SECRET: ${{ secrets.G_CLIENT_SECRET }}
+        BLOGGER_BLOG_ID: ${{ secrets.BLOGGER_BLOG_ID }}
+      run: |
+        python main.py
+        
+    - name: Post completion notification
+      if: success()
+      run: |
+        echo "✅ Blog post published successfully!"
+        echo "📅 Time: $(date)"
+        
+    - name: Error notification
+      if: failure()
+      run: |
+        echo "❌ Blog post failed!"
+        echo "📅 Time: $(date)"
