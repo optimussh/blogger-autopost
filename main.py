@@ -1,5 +1,4 @@
 import os
-from dotenv import load_dotenv
 import requests
 import time
 import random
@@ -11,12 +10,16 @@ import xml.etree.ElementTree as ET
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-load_dotenv()
+# 로컬 환경을 위한 dotenv (GitHub Actions에서는 없어도 패스하도록 설정)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
-GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={GEMINI_API_KEY}"
-
-# ====================== 2026년 3월 기준 가장 터지는 Vibe Coding Fallback 풀 (60개) ======================
+# 🚨 404 에러 방지: 존재하는 모델인 1.5-flash로 수정 완료
+GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"# ====================== 2026년 3월 기준 가장 터지는 Vibe Coding Fallback 풀 (60개) ======================
 FALLBACK_TOPICS = [
     "Claude Code Opus 4.6으로 하루 만에 MVP 만들기: Agent Teams 실전 가이드",
     "Cursor IDE 2026 완전 정복: Composer 모드로 3배 빠른 풀스택 개발",
