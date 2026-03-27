@@ -3,7 +3,7 @@ import requests
 import time
 import random
 import re
-import urllib.parse
+import base64
 from datetime import datetime
 import xml.etree.ElementTree as ET
 
@@ -19,6 +19,9 @@ except ImportError:
 
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 GEMINI_TEXT_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+GEMINI_IMAGE_URL = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key={GEMINI_API_KEY}"
+
+
 # ====================== 2026년 3월 기준 가장 터지는 Vibe Coding Fallback 풀 (60개) ======================
 # 🚨 주의: 파이썬은 이 부분의 줄 맞춤(들여쓰기)에 엄청 예민합니다. 아래와 같이 똑같이 맞춰야 합니다.
 FALLBACK_TOPICS = [
@@ -117,13 +120,46 @@ def get_published_titles():
 def get_vibe_coding_topic():
     published_titles = get_published_titles()
     random.shuffle(FALLBACK_TOPICS)
-    
     for topic in FALLBACK_TOPICS:
         topic_lower = topic.lower()
         is_duplicate = any(topic_lower in pub or pub in topic_lower for pub in published_titles if pub)
         if not is_duplicate:
             return topic
     return "2026 AI Coding Trends"
+
+# ====================== (완벽 해결) 이미지 생성 및 다이렉트 업로드 ======================
+def generate_and_upload_image(image_prompt):
+    print(f"🎨 구글 Imagen 3로 이미지 생성 중... (프롬프트: {image_prompt[:50]}...)")
+    
+    headers = {'Content-Type': 'application/json'}
+    safe_prompt = re.sub(r'[^a-zA-Z0-9\s,]', '', image_prompt).strip()
+    payload = {
+        "instances": [{"prompt": f"A high-quality, vibrant flat design illustration for a tech blog. {safe_prompt}. Modern tech aesthetic, clean lines, highly detailed."}],
+        "parameters": {"sampleCount": 1, "aspectRatio": "16:9"}
+    }
+    
+    try:
+        # 1. 구글 API로 이미지 생성 (Base64)
+        response = requests.post(GEMINI_IMAGE_URL, headers=headers, json=payload, timeout=60)
+        response.raise_for_status()
+        base64_img = response.json()['predictions'][0]['bytesBase64Encoded']
+        image_bytes = base64.b64decode(base64_img)
+        print("✅ 구글 이미지 생성 완료! 호스팅 서버로 업로드 중...")
+        
+        # 2. 무료 이미지 호스팅(Catbox)에 업로드하여 절대 깨지지 않는 영구 URL 획득 (블로거 필터링 완벽 우회)
+        files = {'fileToUpload': ('thumbnail.jpg', image_bytes, 'image/jpeg')}
+        data = {'reqtype': 'fileupload'}
+        upload_resp = requests.post('https://catbox.moe/user/api.php', files=files, data=data, timeout=30)
+        upload_resp.raise_for_status()
+        
+        final_url = upload_resp.text.strip()
+        print(f"✅ 이미지 호스팅 업로드 성공: {final_url}")
+        return final_url
+        
+    except Exception as e:
+        print(f"❌ 이미지 생성/업로드 실패: {e}")
+        # 실패 시 깨지지 않는 깔끔한 기본 IT 이미지 주소 반환
+        return "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=1024&q=80"
 
 def generate_content(topic):
     print(f"✍️ 글, 태그, 프롬프트 동시 생성 중: {topic}...")
@@ -134,9 +170,10 @@ def generate_content(topic):
     
     --- CRITICAL REQUIREMENTS ---
     1. **어투:** "안녕하세요! VibeCoder입니다! 👋", "바로 시작해 볼까요? 🔥" 등 매우 활기차고 트렌디한 어투.
-    2. **Image Prompt:** 썸네일 생성을 위해 이 글을 표현하는 영단어 나열. (예: developer, AI coding, neon blue, flat design)
-    3. **Tags:** 이 글에 관련된 구체적인 키워드 3개. (예: Cursor, MVP제작, AI자동화)
-    4. **Formatting:** ONLY HTML tags (<h2>, <h3>, <p>, <ul>, <strong> 등). DO NOT use Markdown.
+    2. **가독성:** 문단을 짧게 끊어 쓰고, 설명을 구체적이고 길게 풀어주세요.
+    3. **Image Prompt:** 썸네일 생성을 위해 이 글을 표현하는 영단어 나열. (예: developer, AI coding, neon blue, flat design)
+    4. **Tags:** 이 글에 관련된 구체적인 키워드 3개. (예: Cursor, MVP제작, AI자동화)
+    5. **Formatting:** ONLY HTML tags (<h2>, <h3>, <p>, <ul>, <strong> 등). DO NOT use Markdown.
     
     --- Structure your response EXACTLY like this ---
     
@@ -162,7 +199,6 @@ def generate_content(topic):
         content = response.json()['candidates'][0]['content']['parts'][0]['text']
         content = convert_markdown_to_html(content.replace('```html', '').replace('```', ''))
         
-        # 데이터 파싱
         image_prompt, dynamic_tags = "", []
         
         img_match = re.search(r'\[FEATURED_IMAGE_PROMPT:\s*(.*?)\]', content)
@@ -171,7 +207,6 @@ def generate_content(topic):
         tag_match = re.search(r'\[TAGS:\s*(.*?)\]', content)
         if tag_match: dynamic_tags = [t.strip() for t in tag_match.group(1).split(',')]
         
-        # 본문 및 제목 추출
         article_start = content.find('<article>')
         body = content[article_start:].strip() if article_start != -1 else content
         title = body[body.find('<h1>')+4 : body.find('</h1>')].strip() if '<h1>' in body else topic
@@ -182,40 +217,42 @@ def generate_content(topic):
         print(f"❌ 텍스트 생성 오류: {e}")
         return None, None, "", []
 
-def post_to_blogger(title, content, image_prompt, dynamic_tags):
+def post_to_blogger(title, content, image_url, dynamic_tags):
     if not title or not content: return
 
     service = get_blogger_service()
     blog_id = os.environ["BLOGGER_BLOG_ID"]
     
-    # 태그 조합 (기본 태그 + AI 생성 동적 태그)
     labels = ["AI Coding", "VibeCoding"] + dynamic_tags
-    labels = list(dict.fromkeys(labels))[:6] # 중복 제거 및 최대 6개 제한
+    labels = list(dict.fromkeys(labels))[:6]
     
-    # 1. 이미지 URL 안전하게 생성 (알파벳, 숫자, 쉼표, 공백만 남김)
-    safe_prompt_text = re.sub(r'[^a-zA-Z0-9\s,]', '', image_prompt).strip()
-    if not safe_prompt_text: safe_prompt_text = "tech blog illustration, artificial intelligence, coding"
-    encoded_prompt = urllib.parse.quote(f"high quality tech blog illustration, {safe_prompt_text}")
-    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=576&nologo=true"
-    
-    # 2. 랜덤 별점 생성 (4.7 ~ 4.9)
     rating = round(random.uniform(4.7, 4.9), 1)
     
-    # 3. HTML & CSS 스타일링 주입 (가독성 폭발)
+    # ====================== (디자인 혁신) 가독성 극대화 CSS ======================
     styled_content = f"""
     <style>
-      .vibe-content {{ font-family: 'Noto Sans KR', sans-serif; color: #333; line-height: 1.8; }}
-      .vibe-content h2 {{ margin-top: 50px; margin-bottom: 20px; font-size: 1.6em; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; }}
-      .vibe-content h3 {{ margin-top: 35px; margin-bottom: 15px; font-size: 1.3em; color: #1a73e8; }}
-      .vibe-content p {{ margin-bottom: 20px; font-size: 16px; }}
-      .vibe-content ul {{ margin-bottom: 30px; padding-left: 20px; }}
-      .vibe-content li {{ margin-bottom: 12px; font-size: 16px; }}
-      .vibe-rating {{ text-align: right; margin-top: 60px; padding-top: 20px; border-top: 1px dashed #ccc; font-size: 1.2em; font-weight: bold; color: #f39c12; }}
+      .vibe-content {{ font-family: 'Noto Sans KR', sans-serif; color: #222; line-height: 2.0; letter-spacing: -0.3px; }}
+      
+      /* H2: 굵고 여백을 넓게 주어 문단을 확실히 나눔 */
+      .vibe-content h2 {{ margin-top: 65px; margin-bottom: 25px; font-size: 1.7em; border-bottom: 3px solid #ff6b6b; padding-bottom: 12px; font-weight: 800; }}
+      
+      /* H3: 시원한 배경색과 좌측 포인트 컬러로 눈에 확 띄게 만듦 */
+      .vibe-content h3 {{ margin-top: 50px; margin-bottom: 20px; font-size: 1.4em; color: #2c3e50; font-weight: bold; background-color: #f8f9fa; padding: 12px 18px; border-left: 5px solid #1a73e8; border-radius: 6px; }}
+      
+      /* P (본문): 글씨를 키우고 아래 여백을 넉넉히 주어 답답하지 않게 함 */
+      .vibe-content p {{ margin-bottom: 25px; font-size: 17px; word-break: keep-all; }}
+      
+      /* 리스트: 박스 형태로 감싸서 깔끔하게 정리 */
+      .vibe-content ul {{ margin-bottom: 40px; background-color: #fdfdfd; padding: 25px 25px 25px 45px; border-radius: 10px; border: 1px solid #eaeaea; }}
+      .vibe-content li {{ margin-bottom: 15px; font-size: 17px; }}
+      
+      /* 별점 둥둥 떠있는 느낌으로 마무리 */
+      .vibe-rating {{ text-align: right; margin-top: 80px; padding-top: 25px; border-top: 2px dashed #ddd; font-size: 1.4em; font-weight: bold; color: #f39c12; }}
     </style>
     
     <div class="vibe-content">
-      <div style="text-align: center; margin-bottom: 40px;">
-        <img src="{image_url}" alt="{title}" style="max-width: 100%; height: auto; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" onerror="this.style.display='none'"/>
+      <div style="text-align: center; margin-bottom: 50px;">
+        <img src="{image_url}" alt="{title}" style="max-width: 100%; height: auto; border-radius: 14px; box-shadow: 0 8px 20px rgba(0,0,0,0.15);"/>
       </div>
       
       {content}
@@ -238,4 +275,10 @@ if __name__ == "__main__":
     print(f"\n{'='*70}\n🚀 Vibe Coding Auto Post 시작\n{'='*70}\n")
     topic = get_vibe_coding_topic()
     title, body, image_prompt, dynamic_tags = generate_content(topic)
-    post_to_blogger(title, body, image_prompt, dynamic_tags)
+    
+    if title and body:
+        # 이미지 생성 및 다이렉트 호스팅 업로드 (가장 확실한 방법)
+        final_image_url = generate_and_upload_image(image_prompt)
+        post_to_blogger(title, body, final_image_url, dynamic_tags)
+    else:
+        print("\n❌ 콘텐츠 생성에 실패했습니다.")
