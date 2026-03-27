@@ -1,5 +1,4 @@
 import os
-from dotenv import load_dotenv
 import requests
 import time
 import random
@@ -11,9 +10,15 @@ import xml.etree.ElementTree as ET
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-load_dotenv()
+# 로컬 환경을 위한 dotenv (GitHub Actions에서는 없어도 패스하도록 설정)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+# 🚨 404 에러 방지: 존재하는 모델인 1.5-flash로 수정 완료
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
 
 # ====================== 2026년 3월 기준 가장 터지는 Vibe Coding Fallback 풀 (60개) ======================
@@ -36,7 +41,7 @@ FALLBACK_TOPICS = [
     "2026 개발자 생산성 5배 높이는 Vibe Coding 워크플로우 구축법",
     "Cursor vs GitHub Copilot X: 2026년 진짜 승자는?",
     "Claude Code Agent로 버그 자동 수정하고 테스트까지 끝내는 법",
-    "Antigravity 초보자 추천 설정: 완전 무��� AI 코딩 시작하기",
+    "Antigravity 초보자 추천 설정: 완전 무료로 AI 코딩 시작하기",
     "Vibe Coding으로 Micro-SaaS, Standalone 앱, Remix 템플릿 만들기",
     "Windsurf Plan Mode로 복잡한 멀티파일 작업 자동화하는 실전 가이드",
     "Claude 4.6 Sonnet vs Opus: 비용 절감하면서 성능 내는 선택법",
@@ -48,7 +53,7 @@ FALLBACK_TOPICS = [
     "Vibe Coding에서 Production 코드로 넘어가기: 보안·아키텍처 실전 팁",
     "Windsurf Cascade AI Agent로 병렬 개발하는 실전 워크플로우",
     "Claude Code로 기술 부채 없이 빠르게 MVP 출시하는 단계별 가이드",
-    "Antigravity + Claude Opus 조합으로 무���로 최고 성능 내는 법",
+    "Antigravity + Claude Opus 조합으로 무료로 최고 성능 내는 법",
     "Cursor에서 AI로 전체 리팩토링 하는 단계별 실전 가이드",
     "2026년 개발자 필수 AI 스택: Cursor + Claude Code + Lovable 조합",
     "Lovable로 만든 앱을 실제 수익 나는 Micro-SaaS로 키우는 법",
