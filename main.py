@@ -18,11 +18,13 @@ except ImportError:
     pass
 
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
-# 🚨 404 에러 방지: 존재하는 모델인 1.5-flash로 수정 완료
-GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
 
-# ====================== 2026년 3월 기준 가장 터지는 Vibe Coding Fallback 풀 (60개) ======================
-FALLBACK_TOPICS = [
+# 텍스트 생성용 모델 (글쓰기)
+GEMINI_TEXT_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+# 이미지 생성용 모델 (썸네일) - 구글 Imagen / Gemini Image API
+GEMINI_IMAGE_URL = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key={GEMINI_API_KEY}"
+
+# ====================== 2026년 3월 기준 가장 터지는 Vibe Coding Fallback 풀 (60개) ======================FALLBACK_TOPICS = [
     "Claude Code Opus 4.6으로 하루 만에 MVP 만들기: Agent Teams 실전 가이드",
     "Cursor IDE 2026 완전 정복: Composer 모드로 3배 빠른 풀스택 개발",
     "Windsurf AI IDE vs Cursor: 2026년 어떤 걸 골라야 할까? 가격·성능 비교",
@@ -41,7 +43,7 @@ FALLBACK_TOPICS = [
     "2026 개발자 생산성 5배 높이는 Vibe Coding 워크플로우 구축법",
     "Cursor vs GitHub Copilot X: 2026년 진짜 승자는?",
     "Claude Code Agent로 버그 자동 수정하고 테스트까지 끝내는 법",
-    "Antigravity 초보자 추천 설정: 완전 무료로 AI 코딩 시작하기",
+    "Antigravity 초보자 추천 설정: 완전 무��� AI 코딩 시작하기",
     "Vibe Coding으로 Micro-SaaS, Standalone 앱, Remix 템플릿 만들기",
     "Windsurf Plan Mode로 복잡한 멀티파일 작업 자동화하는 실전 가이드",
     "Claude 4.6 Sonnet vs Opus: 비용 절감하면서 성능 내는 선택법",
@@ -53,7 +55,7 @@ FALLBACK_TOPICS = [
     "Vibe Coding에서 Production 코드로 넘어가기: 보안·아키텍처 실전 팁",
     "Windsurf Cascade AI Agent로 병렬 개발하는 실전 워크플로우",
     "Claude Code로 기술 부채 없이 빠르게 MVP 출시하는 단계별 가이드",
-    "Antigravity + Claude Opus 조합으로 무료로 최고 성능 내는 법",
+    "Antigravity + Claude Opus 조합으로 무���로 최고 성능 내는 법",
     "Cursor에서 AI로 전체 리팩토링 하는 단계별 실전 가이드",
     "2026년 개발자 필수 AI 스택: Cursor + Claude Code + Lovable 조합",
     "Lovable로 만든 앱을 실제 수익 나는 Micro-SaaS로 키우는 법",
@@ -84,8 +86,7 @@ FALLBACK_TOPICS = [
     "Lovable로 빠른 프로토타입 검증 후 Cursor로 프로덕션 전환하기",
     "2026 개발자 생산성 도구 스택: Claude Code + Cursor + Lovable 조합"
 ]
-
-# ====================== 중복 방지 함수 ======================
+# ====================== 유틸리티 함수 ======================
 def load_published_topics():
     if os.path.exists("published_topics.json"):
         with open("published_topics.json", "r", encoding="utf-8") as f:
@@ -105,23 +106,6 @@ def is_duplicate(topic):
     topic_lower = topic.lower()
     return any(t["topic"].lower() in topic_lower or topic_lower in t["topic"].lower() for t in topics)
 
-# ====================== Vibe Coding 전용 주제 선택 ======================
-def get_vibe_coding_topic():
-    print("🔍 Vibe Coding 주제 선택 중...")
-    
-    random.shuffle(FALLBACK_TOPICS)
-    published_set = {t["topic"].lower() for t in load_published_topics()}
-    
-    for topic in FALLBACK_TOPICS:
-        if topic.lower() not in published_set and not is_duplicate(topic):
-            print(f"✅ 선택된 Vibe Coding 주제: {topic}")
-            return topic, "AI Coding Tools"
-    
-    # Fallback 풀 소진 시 기존 RSS 사용
-    print("⚠️ Fallback 풀 소진 → 기존 RSS 트렌드 사용")
-    return get_random_trending_topic()
-
-# 2. Convert Markdown to HTML (기존 함수 그대로)
 def convert_markdown_to_html(text):
     text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
     text = re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
@@ -130,6 +114,38 @@ def convert_markdown_to_html(text):
     text = re.sub(r'`(.+?)`', r'<code>\1</code>', text)
     return text
 
+# ====================== (기능 추가) 구글 API로 이미지 생성 ======================
+def generate_google_image(image_prompt):
+    print(f"🎨 구글 API로 썸네일 이미지 생성 중... (프롬프트: {image_prompt[:50]}...)")
+    
+    headers = {'Content-Type': 'application/json'}
+    payload = {
+        "instances": [
+            {"prompt": f"A high-quality, vibrant flat design illustration for a tech blog. {image_prompt}. Modern tech aesthetic, clean lines, highly detailed."}
+        ],
+        "parameters": {
+            "sampleCount": 1,
+            "aspectRatio": "16:9"
+        }
+    }
+    
+    try:
+        response = requests.post(GEMINI_IMAGE_URL, headers=headers, json=payload, timeout=60)
+        response.raise_for_status()
+        data = response.json()
+        
+        # 구글 API는 이미지를 Base64 문자열로 반환합니다.
+        base64_img = data['predictions'][0]['bytesBase64Encoded']
+        print("✅ 이미지 생성 완료!")
+        
+        # HTML <img> 태그에 바로 넣을 수 있는 Data URI 형태로 반환
+        return f"data:image/jpeg;base64,{base64_img}"
+        
+    except Exception as e:
+        print(f"❌ 이미지 생성 실패: {e}")
+        return None
+
+# ====================== 구글 Blogger 연동 ======================
 def get_blogger_service():
     creds = Credentials(
         None, 
@@ -141,226 +157,157 @@ def get_blogger_service():
     )
     return build('blogger', 'v3', credentials=creds)
 
-def get_random_trending_topic():
-    rss_feeds = {
-        "Technology": "https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=en-US&gl=US&ceid=US:en",
-    }
+def get_vibe_coding_topic():
+    print("🔍 Vibe Coding 주제 선택 중...")
+    random.shuffle(FALLBACK_TOPICS)
+    published_set = {t["topic"].lower() for t in load_published_topics()}
     
-    category_name, rss_url = random.choice(list(rss_feeds.items()))
-    print(f"🔍 Searching category: {category_name}...")
+    for topic in FALLBACK_TOPICS:
+        if topic.lower() not in published_set and not is_duplicate(topic):
+            print(f"✅ 선택된 Vibe Coding 주제: {topic}")
+            return topic, "AI Coding Tools"
     
-    try:
-        response = requests.get(rss_url)
-        if response.status_code == 200:
-            root = ET.fromstring(response.content)
-            trends = []
-            for item in root.findall('.//item')[:15]:
-                title = item.find('title').text
-                clean_title = title.split(' - ')[0]
-                trends.append(clean_title)
-            
-            if not trends: 
-                return "2026 AI Coding Trends", "AI Coding Tools"
-            return random.choice(trends), category_name
-        else:
-            print(f"Error fetching RSS: {response.status_code}")
-            return "2026 AI Coding Trends", "AI Coding Tools"
-    except Exception as e:
-        print(f"Exception fetching news: {e}")
-        return "2026 AI Coding Trends", "AI Coding Tools"
+    return "2026 AI Coding Trends", "AI Coding Tools"
 
+# ====================== (프롬프트 정교화) 콘텐츠 생성 ======================
 def generate_content(topic, category):
-    print(f"✍️ Writing Vibe Coding blog post about: {topic}...")
+    print(f"✍️ 글 작성 및 동적 이미지 프롬프트 생성 중: {topic}...")
     
     prompt = f"""
-    당신은 AI코딩랩의 전문 AI 코딩 강사 'VibeCoder'입니다.
-    주제: "{topic}" 에 대해 2026년 최신 트렌드를 반영한 **실전 가이드** 블로그 글을 작성해주세요.
-    카테고리: {category}
+    당신은 2026년 가장 터지는 AI 코딩 전문 블로그 'AI 코딩 랩'의 전문 강사이자 'Vibe 코딩 스쿨'의 창립자 'VibeCoder'입니다.
     
-    CRITICAL: Use ONLY HTML tags for formatting. DO NOT use Markdown syntax like **bold** or _italic_. 
-    Use <strong>bold</strong> and <em>italic</em> instead.
+    주제: "{topic}" 에 대해 **실전 가이드** 블로그 글을 작성해주세요.
     
-    초보자도 바로 따라할 수 있게 **단계별 실전 가이드** 스타일로 작성하세요.
-    비용 비교, 실제 사용 사례, 코드 예시, FAQ, 결론에 CTA 포함.
+    --- CRITICAL REQUIREMENTS ---
+    1. **어투:** "안녕하세요! VibeCoder입니다! 👋", "자, 오늘 바로 시작해 볼까요? 🔥" 처럼 독자에게 직접 말하는 듯한 활기찬 어투.
+    2. **단락 구조:** 초보자도 바로 따라 할 수 있게 소제목(H2, H3)에 이모지와 숫자를 매겨 단계별 가이드 스타일로 작성하세요.
+    3. **Formatting:** Use ONLY HTML tags. DO NOT use Markdown. 적극적으로 <strong>bold</strong>, <ul>, <li>, <blockquote> 태그를 사용하세요.
+    4. **Image Prompt (중요):** 당신이 작성한 글의 핵심 주제를 가장 잘 표현할 수 있는 썸네일 이미지 프롬프트를 **반드시 '영어'로** 작성해 주세요. 
+       (예시: A vibrant illustrative flat design of a developer building a full-stack app using Cursor IDE, neon blue and purple tones)
     
-    SEO REQUIREMENTS:
-    1. Title: 매력적이고 검색 잘 되는 H1 제목 (50-60자)
-    2. Meta Description: 150-160자 SEO 설명
-    3. URL Slug: 영문 소문자 + 하이픈으로 된 슬러그
+    --- Structure your response EXACTLY like this ---
     
-    Structure your response EXACTLY like this:
-    
-    META_DESCRIPTION: [150-160자 설명]
-    URL_SLUG: [keyword-rich-url-slug]
+    [META_DESCRIPTION: 150-160자 SEO 설명]
+    [URL_SLUG: keyword-rich-url-slug]
+    [FEATURED_IMAGE_PROMPT: (여기에 영어로 작성된 동적 이미지 프롬프트 삽입)]
     
     <article>
     <header>
-    <h1>[SEO 최적화된 제목]</h1>
+    <h1>[이모지가 포함된 SEO 최적화된 제목]</h1>
     </header>
     
     <section class="introduction">
-    <p>[독자를 사로잡는 서론 + 주제 언급]</p>
+    <p>👋 [활기차고 실전적인 서론]</p>
     </section>
     
     <section>
-    <h2>주요 포인트 5가지</h2>
-    ... 단계별 설명 ...
+    <h2>주요 포인트 5가지 🔥</h2>
+    <ul>
+    <li>🚀 [포인트]</li>
+    ...
+    </ul>
     </section>
     
-    <section class="faq">
-    <h2>Frequently Asked Questions</h2>
-    ... 4~5개 FAQ ...
+    <section>
+    <h2>실전 가이드 단계별 따라 하기 🛠️</h2>
+    <h3>1️⃣ Step 1: [Vibe 스타일 소제목]</h3>
+    <p>[상세 설명 + 코드 예시 등]</p>
+    ...
     </section>
     
     <section class="conclusion">
-    <h2>Final Thoughts</h2>
-    <p>오늘 바로 시작할 수 있는 CTA</p>
+    <h2>Final Thoughts & CTA 💡</h2>
+    <p>[마무리 및 행동 촉구]</p>
     </section>
     </article>
-    
-    Return the complete response.
     """
     
-    max_retries = 3
-    retry_delay = 2
-    
-    for attempt in range(max_retries):
-        try:
-            payload = {
-                "contents": [{
-                    "parts": [{"text": prompt}]
-                }],
-                "safetySettings": [
-                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"}
-                ]
-            }
-            
-            response = requests.post(GEMINI_API_URL, json=payload, timeout=90)
-            
-            if response.status_code == 429:
-                if attempt < max_retries - 1:
-                    wait_time = retry_delay * (2 ** attempt)
-                    print(f"⏳ Rate limited. Waiting {wait_time}s before retry {attempt + 1}/{max_retries}...")
-                    time.sleep(wait_time)
-                    continue
-                else:
-                    print(f"❌ Rate limit exceeded after {max_retries} attempts")
-                    return None, None, None, {}
-            
-            response.raise_for_status()
-            result = response.json()
-            
-            if 'candidates' not in result or len(result['candidates']) == 0:
-                print(f"⚠️ No candidates in response.")
-                if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
-                    continue
-                return None, None, None, {}
-            
-            content = result['candidates'][0]['content']['parts'][0]['text']
-            content = content.replace('```html', '').replace('```', '')
-            content = convert_markdown_to_html(content)
-            
-            seo_data = {}
-            try:
-                if 'META_DESCRIPTION:' in content:
-                    meta_start = content.find('META_DESCRIPTION:') + len('META_DESCRIPTION:')
-                    meta_end = content.find('\n', meta_start)
-                    seo_data['meta_description'] = content[meta_start:meta_end].strip()
-                
-                if 'URL_SLUG:' in content:
-                    slug_start = content.find('URL_SLUG:') + len('URL_SLUG:')
-                    slug_end = content.find('\n', slug_start)
-                    seo_data['url_slug'] = content[slug_start:slug_end].strip()
-                
-                start = content.find('<h1>') + 4
-                end = content.find('</h1>')
-                title = content[start:end].strip() if start > 3 and end > start else topic
-                
-                article_start = content.find('<article>')
-                article_end = len(content)
-                body = content[article_start:article_end].strip() if article_start != -1 else content
-                
-            except Exception as e:
-                print(f"⚠️ Error parsing SEO data: {e}")
-                title = topic
-                body = content
-                seo_data = {}
-                
-            return title, body, category, seo_data
-            
-        except Exception as e:
-            print(f"❌ Error in attempt {attempt + 1}: {e}")
-            if attempt < max_retries - 1:
-                time.sleep(retry_delay * (attempt + 1))
-                continue
-            return None, None, None, {}
-    
-    return None, None, None, {}
-
-def post_to_blogger(title, content, category, seo_data=None):
-    if not title or not content:
-        print("❌ Content generation failed. Skipping post.")
-        return
-
-    if seo_data is None:
+    try:
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        response = requests.post(GEMINI_TEXT_URL, json=payload, timeout=90)
+        response.raise_for_status()
+        result = response.json()
+        
+        content = result['candidates'][0]['content']['parts'][0]['text']
+        content = content.replace('```html', '').replace('```', '')
+        content = convert_markdown_to_html(content)
+        
         seo_data = {}
+        featured_image_prompt = None
+        
+        # 정규식으로 데이터 추출
+        meta_match = re.search(r'\[META_DESCRIPTION:\s*(.*?)\]', content)
+        if meta_match: seo_data['meta_description'] = meta_match.group(1).strip()
+        
+        slug_match = re.search(r'\[URL_SLUG:\s*(.*?)\]', content)
+        if slug_match: seo_data['url_slug'] = slug_match.group(1).strip()
+        
+        # 글의 내용에 맞춰 AI가 스스로 짠 이미지 프롬프트 추출
+        image_prompt_match = re.search(r'\[FEATURED_IMAGE_PROMPT:\s*(.*?)\]', content)
+        if image_prompt_match: featured_image_prompt = image_prompt_match.group(1).strip()
+        
+        # HTML 본문 추출
+        article_start = content.find('<article>')
+        article_end = len(content)
+        body = content[article_start:article_end].strip() if article_start != -1 else content
+        
+        # 제목 추출
+        start = body.find('<h1>') + 4
+        end = body.find('</h1>')
+        title = body[start:end].strip() if start > 3 and end > start else topic
+        
+        return title, body, category, seo_data, featured_image_prompt
+        
+    except Exception as e:
+        print(f"❌ 텍스트 생성 중 오류: {e}")
+        return None, None, None, {}, None
+
+def post_to_blogger(title, content, category, seo_data=None, base64_image_data=None):
+    if not title or not content:
+        return
 
     service = get_blogger_service()
     blog_id = os.environ["BLOGGER_BLOG_ID"]
-    today = datetime.now().strftime('%Y')
     
-    labels = [category, "VibeCoding", "AI Coding", "2026", today]
-    if seo_data.get('keywords'):
-        keywords_list = [kw.strip() for kw in seo_data.get('keywords', '').split(',')[:5]]
-        labels.extend(keywords_list)
+    labels = [category, "VibeCoding", "AI Tools"]
     
-    labels = list(dict.fromkeys(labels))[:15]
+    # 생성된 Base64 이미지를 HTML 최상단에 삽입
+    final_content = ""
+    if base64_image_data:
+        final_content += f'<div style="text-align: center; margin-bottom: 20px;"><img src="{base64_image_data}" alt="{title}" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);" /></div>\n\n'
+    
+    final_content += content
     
     body = {
         "kind": "blogger#post",
         "title": title[:100],
-        "content": content,
+        "content": final_content,
         "labels": labels
     }
     
     try:
         result = service.posts().insert(blogId=blog_id, body=body, isDraft=False).execute()
         print(f"✅ Published successfully: {result.get('url', 'URL not available')}")
-        
-        save_published_topic(title)  # 제목으로 중복 방지 (더 안전)
-        
+        save_published_topic(title)
     except Exception as e:
-        print(f"❌ Error posting to Blogger: {e}")
+        print(f"❌ Blogger 포스팅 실패: {e}")
 
-# ====================== 메인 실행 ======================
+# ====================== 메인 실행 흐름 ======================
 if __name__ == "__main__":
-    max_topic_attempts = 5
+    print(f"\n{'='*70}\n🚀 Vibe Coding Auto Post 시작\n{'='*70}\n")
     
-    for attempt in range(max_topic_attempts):
-        print(f"\n{'='*70}")
-        print(f"📝 Vibe Coding Auto Post Attempt {attempt + 1}/{max_topic_attempts}")
-        print(f"{'='*70}\n")
+    topic, category = get_vibe_coding_topic()
+    title, body, cat, seo_data, featured_image_prompt = generate_content(topic, category)
+    
+    if title and body:
+        base64_image_data = None
         
-        topic, category = get_vibe_coding_topic()
+        # AI가 뽑아준 프롬프트가 있다면, 구글 이미지 API로 썸네일 생성!
+        if featured_image_prompt:
+            base64_image_data = generate_google_image(featured_image_prompt)
         
-        if is_duplicate(topic):
-            print(f"⚠️ 중복 주제 감지: {topic}")
-            continue
-        
-        title, body, cat, seo_data = generate_content(topic, category)
-        
-        if title and body:
-            post_to_blogger(title, body, cat, seo_data)
-            print(f"\n🎉 Vibe Coding 포스트 게시 완료! 주제: {topic}")
-            break
-        else:
-            print(f"\n⚠️ Content generation failed for topic: {topic}")
-            if attempt < max_topic_attempts - 1:
-                time.sleep(3)
-            else:
-                print("\n❌ 모든 시도 실패")
-                exit(1)
+        # 글과 이미지를 합쳐서 포스팅
+        post_to_blogger(title, body, cat, seo_data, base64_image_data)
+        print(f"\n🎉 모든 과정 완료! 포스팅 주제: {topic}")
+    else:
+        print("\n❌ 콘텐츠 생성에 실패했습니다.")
