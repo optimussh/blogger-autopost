@@ -82,7 +82,9 @@ FALLBACK_TOPICS = [
     "Claude Code로 SWE-bench 고득점 내는 실전 프롬프트 전략",
     "Lovable로 빠른 프로토타입 검증 후 Cursor로 프로덕션 전환하기",
     "2026 개발자 생산성 도구 스택: Claude Code + Cursor + Lovable 조합"
-]def convert_markdown_to_html(text):
+]
+
+def convert_markdown_to_html(text):
     text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
     text = re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
     text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
