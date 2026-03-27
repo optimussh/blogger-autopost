@@ -1,48 +1,46 @@
-name: Daily SEO-Optimized Blog Post
+name: Daily Vibe Coding Auto Post
 
 on:
   schedule:
-    # Run twice daily: 9 AM and 5 PM UTC (adjust to your timezone)
-    - cron: '0 9 * * *'   # 9 AM UTC daily
-    - cron: '0 17 * * *'  # 5 PM UTC daily
-  workflow_dispatch:  # Allow manual trigger
+    - cron: '0 22 * * *'   # 한국시간 새벽 7시
+    - cron: '0 8 * * *'    # 한국시간 오후 5시
+  workflow_dispatch:
 
 jobs:
-  post-blog:
+  generate-and-publish:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-        cache: 'pip'
-        
-    - name: Install dependencies
-      run: |
-        pip install -r requirements.txt
-        
-    - name: Generate and post blog
-      env:
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        G_REFRESH_TOKEN: ${{ secrets.G_REFRESH_TOKEN }}
-        G_CLIENT_ID: ${{ secrets.G_CLIENT_ID }}
-        G_CLIENT_SECRET: ${{ secrets.G_CLIENT_SECRET }}
-        BLOGGER_BLOG_ID: ${{ secrets.BLOGGER_BLOG_ID }}
-      run: |
-        python main.py
-        
-    - name: Post completion notification
-      if: success()
-      run: |
-        echo "✅ Blog post published successfully!"
-        echo "📅 Time: $(date)"
-        
-    - name: Error notification
-      if: failure()
-      run: |
-        echo "❌ Blog post failed!"
-        echo "📅 Time: $(date)"
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install anthropic google-api-python-client google-auth-httplib2 google-auth-oauthlib requests markdown
+
+      - name: Generate & Publish Blog Post
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          G_CLIENT_ID: ${{ secrets.G_CLIENT_ID }}
+          G_CLIENT_SECRET: ${{ secrets.G_CLIENT_SECRET }}
+          G_REFRESH_TOKEN: ${{ secrets.G_REFRESH_TOKEN }}
+          BLOGGER_BLOG_ID: ${{ secrets.BLOGGER_BLOG_ID }}
+        run: python main.py
+
+      - name: Success Notification
+        if: success()
+        run: |
+          echo "✅ Vibe Coding 포스트가 성공적으로 게시되었습니다!"
+          echo "📅 $(date '+%Y년 %m월 %d일 %H:%M:%S')"
+
+      - name: Failure Notification
+        if: failure()
+        run: |
+          echo "❌ Vibe Coding 포스트 게시 실패"
+          echo "📅 $(date '+%Y년 %m월 %d일 %H:%M:%S')"

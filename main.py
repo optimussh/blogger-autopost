@@ -2,30 +2,127 @@ import os
 from dotenv import load_dotenv
 import requests
 import time
+import random
+import re
+import json
+from datetime import datetime
+import xml.etree.ElementTree as ET
+
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-import xml.etree.ElementTree as ET
-import random
-from datetime import datetime
-import markdown
-import re
 
 load_dotenv()
 
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={GEMINI_API_KEY}"
 
-# 2. Convert Markdown to HTML
+# ====================== 2026년 3월 기준 가장 터지는 Vibe Coding Fallback 풀 (60개) ======================
+FALLBACK_TOPICS = [
+    "Claude Code Opus 4.6으로 하루 만에 MVP 만들기: Agent Teams 실전 가이드",
+    "Cursor IDE 2026 완전 정복: Composer 모드로 3배 빠른 풀스택 개발",
+    "Windsurf AI IDE vs Cursor: 2026년 어떤 걸 골라야 할까? 가격·성능 비교",
+    "Lovable.dev로 코드 없이 SaaS 앱 30분 만에 뚝딱 만드는 법",
+    "Google Antigravity 무료로 Claude Opus 4.6까지 쓰는 실전 팁",
+    "Claude Code vs Windsurf: Agentic 워크플로우 누가 더 강할까?",
+    "2026 AI 코딩 도구 가격 총정리: 월 2만원으로 최고 성능 내는 조합",
+    "Cursor Composer로 대형 코드베이스 리팩토링 없이 정리하는 법",
+    "Vibe Coding 초보자 로드맵: 챗봇 → AI Agent까지 5단계",
+    "Gemini Code Assist 실전 가이드: Google Cloud에서 가장 강력한 코딩 도구",
+    "Claude Opus 4.6 1M 컨텍스트로 대형 프로젝트 관리하는 실전 팁",
+    "Windsurf Arena Mode로 여러 AI 모델 동시에 비교하며 코딩하기",
+    "Lovable + Supabase + Vercel로 완전 무코드 MVP 배포하는 방법",
+    "AI 코딩 도구로 기술 부채 쌓이지 않게 하는 7가지 실전 방법",
+    "Claude Code vs OpenAI Codex: 2026년 코딩 에이전트 대전",
+    "2026 개발자 생산성 5배 높이는 Vibe Coding 워크플로우 구축법",
+    "Cursor vs GitHub Copilot X: 2026년 진짜 승자는?",
+    "Claude Code Agent로 버그 자동 수정하고 테스트까지 끝내는 법",
+    "Antigravity 초보자 추천 설정: 완전 무��� AI 코딩 시작하기",
+    "Vibe Coding으로 Micro-SaaS, Standalone 앱, Remix 템플릿 만들기",
+    "Windsurf Plan Mode로 복잡한 멀티파일 작업 자동화하는 실전 가이드",
+    "Claude 4.6 Sonnet vs Opus: 비용 절감하면서 성능 내는 선택법",
+    "Lovable.dev 2026 가격 비교: 진짜 돈 값 하는가?",
+    "AI Agent로 20시간 걸리는 작업을 50% 성공률로 끝내는 방법",
+    "Cursor IDE에서 Claude Opus 4.6 쓰는 최고의 프롬프트 템플릿 10개",
+    "2026 Agentic Coding 트렌드: Orchestration과 Multi-Agent 완전 정리",
+    "Gemini 3.1 Pro Code Assist로 Google Cloud 풀스택 앱 빠르게 만들기",
+    "Vibe Coding에서 Production 코드로 넘어가기: 보안·아키텍처 실전 팁",
+    "Windsurf Cascade AI Agent로 병렬 개발하는 실전 워크플로우",
+    "Claude Code로 기술 부채 없이 빠르게 MVP 출시하는 단계별 가이드",
+    "Antigravity + Claude Opus 조합으로 무���로 최고 성능 내는 법",
+    "Cursor에서 AI로 전체 리팩토링 하는 단계별 실전 가이드",
+    "2026년 개발자 필수 AI 스택: Cursor + Claude Code + Lovable 조합",
+    "Lovable로 만든 앱을 실제 수익 나는 Micro-SaaS로 키우는 법",
+    "AI 코딩 도구 보안 가이드: 취약점 자동 검사와 방어 전략",
+    "Claude Code Agent Skills 2026 최신 기능 완전 정복",
+    "Windsurf Wave 업데이트 후 달라진 점과 실전 활용법",
+    "Vibe Coding으로 게임·웹앱·SaaS 3개 동시 제작하기",
+    "Gemini vs Claude Code: 2026 코딩 성능·가격·속도 비교표",
+    "Cursor IDE Pro vs Free: 과연 돈 주고 쓸 가치가 있을까?",
+    "AI로 10배 빠른 개발하면서 코드 품질 유지하는 비법",
+    "Lovable.dev vs Bolt.new vs v0: 2026년 최고의 Vibe 플랫폼 비교",
+    "Claude Code로 대형 리팩토링 1시간 만에 끝내는 단계별 가이드",
+    "Antigravity 무료 플랜 한계와 극복하는 실전 팁",
+    "2026 AI IDE 전쟁: Cursor · Windsurf · Claude Code 승자 예측",
+    "Vibe Coding 초보자를 위한 첫 프로젝트 5가지 추천",
+    "Windsurf로 멀티 에이전트 동시에 작업하는 실전 팁",
+    "Claude Opus 4.6 128K 출력 토큰을 제대로 활용하는 사례 모음",
+    "AI 코딩 도구로 월 500만원 버는 Micro-SaaS 만드는 실전 가이드",
+    "Cursor Composer + Claude Code 최고의 협업 워크플로우",
+    "2026년 AI 코딩 도구로 기술 부채 없이 지속 가능한 개발하기",
+    "Lovable 노코드 → 실제 코드로 넘어가기 실전 전환 가이드",
+    "Gemini Code Assist + Google Cloud로 풀스택 앱 1시간 제작하기",
+    "Vibe Coding의 미래: Agentic Coding이 가져올 개발자 역할 변화",
+    "Claude Code vs Antigravity: 대형 코드베이스 작업 비교 2026",
+    "Windsurf vs Cursor: Agentic 개발 속도와 안정성 비교",
+    "2026 AI 코딩 트렌드: Human-in-the-Loop vs Fully Agentic",
+    "Claude Code로 SWE-bench 고득점 내는 실전 프롬프트 전략",
+    "Lovable로 빠른 프로토타입 검증 후 Cursor로 프로덕션 전환하기",
+    "2026 개발자 생산성 도구 스택: Claude Code + Cursor + Lovable 조합"
+]
+
+# ====================== 중복 방지 함수 ======================
+def load_published_topics():
+    if os.path.exists("published_topics.json"):
+        with open("published_topics.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+def save_published_topic(topic):
+    topics = load_published_topics()
+    topics.append({"topic": topic, "date": datetime.now().isoformat()})
+    if len(topics) > 40:
+        topics = topics[-40:]
+    with open("published_topics.json", "w", encoding="utf-8") as f:
+        json.dump(topics, f, ensure_ascii=False, indent=2)
+
+def is_duplicate(topic):
+    topics = load_published_topics()
+    topic_lower = topic.lower()
+    return any(t["topic"].lower() in topic_lower or topic_lower in t["topic"].lower() for t in topics)
+
+# ====================== Vibe Coding 전용 주제 선택 ======================
+def get_vibe_coding_topic():
+    print("🔍 Vibe Coding 주제 선택 중...")
+    
+    random.shuffle(FALLBACK_TOPICS)
+    published_set = {t["topic"].lower() for t in load_published_topics()}
+    
+    for topic in FALLBACK_TOPICS:
+        if topic.lower() not in published_set and not is_duplicate(topic):
+            print(f"✅ 선택된 Vibe Coding 주제: {topic}")
+            return topic, "AI Coding Tools"
+    
+    # Fallback 풀 소진 시 기존 RSS 사용
+    print("⚠️ Fallback 풀 소진 → 기존 RSS 트렌드 사용")
+    return get_random_trending_topic()
+
+# 2. Convert Markdown to HTML (기존 함수 그대로)
 def convert_markdown_to_html(text):
     text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
     text = re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
-
-    # Convert italic: *text* or _text_ to <em>text</em>
     text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
     text = re.sub(r'_(.+?)_', r'<em>\1</em>', text)
-    
     text = re.sub(r'`(.+?)`', r'<code>\1</code>', text)
-    
     return text
 
 def get_blogger_service():
@@ -41,13 +138,7 @@ def get_blogger_service():
 
 def get_random_trending_topic():
     rss_feeds = {
-        "Top Stories": "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en",
-        "Business": "https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=en-US&gl=US&ceid=US:en",
         "Technology": "https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=en-US&gl=US&ceid=US:en",
-        "Entertainment": "https://news.google.com/rss/headlines/section/topic/ENTERTAINMENT?hl=en-US&gl=US&ceid=US:en",
-        "Sports": "https://news.google.com/rss/headlines/section/topic/SPORTS?hl=en-US&gl=US&ceid=US:en",
-        "Science": "https://news.google.com/rss/headlines/section/topic/SCIENCE?hl=en-US&gl=US&ceid=US:en",
-        "Health": "https://news.google.com/rss/headlines/section/topic/HEALTH?hl=en-US&gl=US&ceid=US:en"
     }
     
     category_name, rss_url = random.choice(list(rss_feeds.items()))
@@ -63,114 +154,66 @@ def get_random_trending_topic():
                 clean_title = title.split(' - ')[0]
                 trends.append(clean_title)
             
-            if not trends: return None, None
+            if not trends: 
+                return "2026 AI Coding Trends", "AI Coding Tools"
             return random.choice(trends), category_name
         else:
             print(f"Error fetching RSS: {response.status_code}")
-            return None, None
+            return "2026 AI Coding Trends", "AI Coding Tools"
     except Exception as e:
         print(f"Exception fetching news: {e}")
-        return None, None
+        return "2026 AI Coding Trends", "AI Coding Tools"
 
 def generate_content(topic, category):
-    print(f"✍️ Writing blog post about: {topic}...")
+    print(f"✍️ Writing Vibe Coding blog post about: {topic}...")
     
     prompt = f"""
-    You are an expert SEO content writer and professional blogger. Write a comprehensive, SEO-optimized blog post about this trending news story: "{topic}".
-    The category is: {category}.
+    당신은 AI코딩랩의 전문 AI 코딩 강사 'VibeCoder'입니다.
+    주제: "{topic}" 에 대해 2026년 최신 트렌드를 반영한 **실전 가이드** 블로그 글을 작성해주세요.
+    카테고리: {category}
     
-    CRITICAL: Use ONLY HTML tags for formatting. DO NOT use Markdown syntax like **bold** or _italic_. Use <strong>bold</strong> and <em>italic</em> instead.
+    CRITICAL: Use ONLY HTML tags for formatting. DO NOT use Markdown syntax like **bold** or _italic_. 
+    Use <strong>bold</strong> and <em>italic</em> instead.
+    
+    초보자도 바로 따라할 수 있게 **단계별 실전 가이드** 스타일로 작성하세요.
+    비용 비교, 실제 사용 사례, 코드 예시, FAQ, 결론에 CTA 포함.
     
     SEO REQUIREMENTS:
-    1. Title: Create an engaging, keyword-rich H1 title (50-60 characters) that includes the main topic
-    2. Meta Description: Write a compelling 150-160 character summary that includes primary keywords
-    3. URL Slug: Suggest a clean, keyword-rich URL slug (lowercase, hyphens, no special chars)
-    4. Primary Keywords: Identify 3-5 main keywords related to this topic
-    5. Content Length: Minimum 800-1200 words for better ranking
-    6. Heading Structure: Use proper H2 and H3 tags hierarchically
-    7. Internal/External Links: Include 2-3 relevant external authority links
-    8. Images: Suggest 2-3 relevant images with descriptive alt text
-    9. FAQ Section: Add 3-5 common questions with answers
-    10. Call-to-Action: End with engagement prompt
+    1. Title: 매력적이고 검색 잘 되는 H1 제목 (50-60자)
+    2. Meta Description: 150-160자 SEO 설명
+    3. URL Slug: 영문 소문자 + 하이픈으로 된 슬러그
     
     Structure your response EXACTLY like this:
     
-    META_DESCRIPTION: [150-160 char description with keywords]
+    META_DESCRIPTION: [150-160자 설명]
     URL_SLUG: [keyword-rich-url-slug]
-    PRIMARY_KEYWORDS: keyword1, keyword2, keyword3, keyword4, keyword5
-    FOCUS_KEYPHRASE: [main 2-3 word phrase]
     
     <article>
     <header>
-    <h1>[SEO-Optimized Title with Primary Keyword]</h1>
-    <p class="meta"><strong>Category: {category}</strong> | <time datetime="2025-12-28">December 28, 2025</time> | 5 min read</p>
+    <h1>[SEO 최적화된 제목]</h1>
     </header>
     
     <section class="introduction">
-    <p>[Engaging opening paragraph with focus keyphrase in first 100 words. Hook the reader and include primary keywords naturally.]</p>
-    <p>[Second paragraph expanding on the topic with supporting keywords.]</p>
+    <p>[독자를 사로잡는 서론 + 주제 언급]</p>
     </section>
     
     <section>
-    <h2>What is [Topic]?</h2>
-    <p>[Detailed explanation with keywords. 200-300 words with natural keyword density 1-2%.]</p>
-    <p>[Include an external link to an authority source: <a href="URL" rel="nofollow noopener" target="_blank">source text</a>]</p>
-    </section>
-    
-    <section>
-    <h2>Key Details and Background</h2>
-    <h3>The Full Story</h3>
-    <p>[Comprehensive details about the topic. Use bullet points with <ul><li> tags for readability.]</p>
-    <h3>Recent Developments</h3>
-    <p>[Latest updates and information.]</p>
-    </section>
-    
-    <section>
-    <h2>Why This Matters</h2>
-    <p>[Analysis of significance and impact. Include secondary keywords naturally.]</p>
-    <p>[Add another external authority link for credibility.]</p>
-    </section>
-    
-    <section>
-    <h2>Expert Analysis and Insights</h2>
-    <p>[In-depth analysis with unique perspective. Add value beyond basic news reporting.]</p>
+    <h2>주요 포인트 5가지</h2>
+    ... 단계별 설명 ...
     </section>
     
     <section class="faq">
     <h2>Frequently Asked Questions</h2>
-    <div itemscope itemtype="https://schema.org/FAQPage">
-    <div itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
-    <h3 itemprop="name">Q: [Question about topic]?</h3>
-    <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
-    <p itemprop="text">[Detailed answer with keywords]</p>
-    </div>
-    </div>
-    [Repeat for 3-5 questions]
-    </div>
+    ... 4~5개 FAQ ...
     </section>
     
     <section class="conclusion">
     <h2>Final Thoughts</h2>
-    <p>[Summary with primary keywords. Reinforce main points.]</p>
-    <p><strong>What do you think about [topic]? Share your thoughts in the comments below!</strong></p>
-    </section>
-    
-    <section class="related-topics">
-    <h2>Related Topics You Might Like</h2>
-    <ul>
-    <li><a href="#">[Related topic 1]</a></li>
-    <li><a href="#">[Related topic 2]</a></li>
-    <li><a href="#">[Related topic 3]</a></li>
-    </ul>
+    <p>오늘 바로 시작할 수 있는 CTA</p>
     </section>
     </article>
     
-    IMAGE_SUGGESTIONS:
-    1. Alt: "[Descriptive alt text with keywords]" | Caption: "[Image caption]"
-    2. Alt: "[Descriptive alt text with keywords]" | Caption: "[Image caption]"
-    3. Alt: "[Descriptive alt text with keywords]" | Caption: "[Image caption]"
-    
-    Return the complete response with all sections.
+    Return the complete response.
     """
     
     max_retries = 3
@@ -190,7 +233,7 @@ def generate_content(topic, category):
                 ]
             }
             
-            response = requests.post(GEMINI_API_URL, json=payload, timeout=60)
+            response = requests.post(GEMINI_API_URL, json=payload, timeout=90)
             
             if response.status_code == 429:
                 if attempt < max_retries - 1:
@@ -206,83 +249,35 @@ def generate_content(topic, category):
             result = response.json()
             
             if 'candidates' not in result or len(result['candidates']) == 0:
-                print(f"⚠️ No candidates in response. Response: {result}")
-                
-                if 'promptFeedback' in result:
-                    feedback = result['promptFeedback']
-                    if 'blockReason' in feedback:
-                        print(f"❌ Content blocked: {feedback['blockReason']}")
-                        print(f"   Safety ratings: {feedback.get('safetyRatings', 'N/A')}")
-                        if attempt < max_retries - 1:
-                            print(f"🔄 Trying again with a different topic...")
-                            time.sleep(2)
-                            continue
-                        return None, None, None, {}
-                
+                print(f"⚠️ No candidates in response.")
                 if attempt < max_retries - 1:
-                    wait_time = retry_delay * (2 ** attempt)
-                    print(f"⏳ Empty response. Retrying in {wait_time}s...")
-                    time.sleep(wait_time)
-                    continue
-                else:
-                    return None, None, None, {}
-            
-            candidate = result['candidates'][0]
-            if 'content' not in candidate:
-                print(f"⚠️ Content generation blocked by safety filters")
-                print(f"   Finish reason: {candidate.get('finishReason', 'UNKNOWN')}")
-                print(f"   Safety ratings: {candidate.get('safetyRatings', 'N/A')}")
-                
-                if attempt < max_retries - 1:
-                    print(f"🔄 Trying again...")
-                    time.sleep(2)
+                    time.sleep(retry_delay)
                     continue
                 return None, None, None, {}
             
-            content = candidate['content']['parts'][0]['text'].replace('```html', '').replace('```', '')
-            
-            # Convert any remaining Markdown to HTML
+            content = result['candidates'][0]['content']['parts'][0]['text']
+            content = content.replace('```html', '').replace('```', '')
             content = convert_markdown_to_html(content)
             
             seo_data = {}
             try:
-                # Extract meta description
                 if 'META_DESCRIPTION:' in content:
                     meta_start = content.find('META_DESCRIPTION:') + len('META_DESCRIPTION:')
                     meta_end = content.find('\n', meta_start)
                     seo_data['meta_description'] = content[meta_start:meta_end].strip()
                 
-                # Extract URL slug
                 if 'URL_SLUG:' in content:
                     slug_start = content.find('URL_SLUG:') + len('URL_SLUG:')
                     slug_end = content.find('\n', slug_start)
                     seo_data['url_slug'] = content[slug_start:slug_end].strip()
                 
-                # Extract primary keywords
-                if 'PRIMARY_KEYWORDS:' in content:
-                    kw_start = content.find('PRIMARY_KEYWORDS:') + len('PRIMARY_KEYWORDS:')
-                    kw_end = content.find('\n', kw_start)
-                    seo_data['keywords'] = content[kw_start:kw_end].strip()
-                
-                if 'FOCUS_KEYPHRASE:' in content:
-                    focus_start = content.find('FOCUS_KEYPHRASE:') + len('FOCUS_KEYPHRASE:')
-                    focus_end = content.find('\n', focus_start)
-                    seo_data['focus_keyphrase'] = content[focus_start:focus_end].strip()
-                
                 start = content.find('<h1>') + 4
                 end = content.find('</h1>')
-                title = content[start:end]
+                title = content[start:end].strip() if start > 3 and end > start else topic
                 
-                # Extract body (everything after metadata lines and before IMAGE_SUGGESTIONS)
                 article_start = content.find('<article>')
-                if article_start == -1:
-                    article_start = content.find('<h1>')
-                
-                article_end = content.find('IMAGE_SUGGESTIONS:')
-                if article_end == -1:
-                    article_end = len(content)
-                
-                body = content[article_start:article_end].strip()
+                article_end = len(content)
+                body = content[article_start:article_end].strip() if article_start != -1 else content
                 
             except Exception as e:
                 print(f"⚠️ Error parsing SEO data: {e}")
@@ -292,19 +287,11 @@ def generate_content(topic, category):
                 
             return title, body, category, seo_data
             
-        except requests.exceptions.HTTPError as e:
-            if attempt < max_retries - 1:
-                wait_time = retry_delay * (2 ** attempt)
-                print(f"⏳ HTTP Error. Waiting {wait_time}s before retry {attempt + 1}/{max_retries}...")
-                time.sleep(wait_time)
-                continue
-            else:
-                print(f"❌ Gemini API Error: {e}")
-                if hasattr(e, 'response') and e.response is not None:
-                    print(f"Response: {e.response.text}")
-                return None, None, None, {}
         except Exception as e:
-            print(f"❌ Unexpected error: {e}")
+            print(f"❌ Error in attempt {attempt + 1}: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay * (attempt + 1))
+                continue
             return None, None, None, {}
     
     return None, None, None, {}
@@ -321,72 +308,54 @@ def post_to_blogger(title, content, category, seo_data=None):
     blog_id = os.environ["BLOGGER_BLOG_ID"]
     today = datetime.now().strftime('%Y')
     
-    labels = [category, "News", "Trending", today]
+    labels = [category, "VibeCoding", "AI Coding", "2026", today]
     if seo_data.get('keywords'):
-        keywords_list = [kw.strip() for kw in seo_data['keywords'].split(',')[:5]]
+        keywords_list = [kw.strip() for kw in seo_data.get('keywords', '').split(',')[:5]]
         labels.extend(keywords_list)
     
-    if seo_data.get('focus_keyphrase'):
-        labels.append(seo_data['focus_keyphrase'])
-    
-    labels = list(dict.fromkeys(labels))[:20]
-    
-    # SEO-optimized title
-    seo_title = title
-    if seo_data.get('focus_keyphrase') and seo_data['focus_keyphrase'].lower() not in title.lower():
-        seo_title = f"{title} - {seo_data['focus_keyphrase']}"
+    labels = list(dict.fromkeys(labels))[:15]
     
     body = {
         "kind": "blogger#post",
-        "title": seo_title[:100],
+        "title": title[:100],
         "content": content,
         "labels": labels
     }
     
     try:
-        posts = service.posts()
-        result = posts.insert(blogId=blog_id, body=body, isDraft=False).execute()
-        print(f"✅ Published: {result['url']}")
+        result = service.posts().insert(blogId=blog_id, body=body, isDraft=False).execute()
+        print(f"✅ Published successfully: {result.get('url', 'URL not available')}")
         
-        if seo_data:
-            print("\n📊 SEO Optimization Applied:")
-            if seo_data.get('meta_description'):
-                print(f"  📝 Meta Description: {seo_data['meta_description'][:50]}...")
-            if seo_data.get('focus_keyphrase'):
-                print(f"  🎯 Focus Keyphrase: {seo_data['focus_keyphrase']}")
-            if seo_data.get('keywords'):
-                print(f"  🔑 Keywords: {seo_data['keywords']}")
-            if seo_data.get('url_slug'):
-                print(f"  🔗 Suggested URL: {seo_data['url_slug']}")
-            print(f"  🏷️  Total Labels: {len(labels)}")
+        save_published_topic(title)  # 제목으로 중복 방지 (더 안전)
+        
     except Exception as e:
         print(f"❌ Error posting to Blogger: {e}")
 
+# ====================== 메인 실행 ======================
 if __name__ == "__main__":
     max_topic_attempts = 5
     
     for attempt in range(max_topic_attempts):
-        print(f"\n{'='*60}")
-        print(f"📝 Attempt {attempt + 1}/{max_topic_attempts}")
-        print(f"{'='*60}\n")
+        print(f"\n{'='*70}")
+        print(f"📝 Vibe Coding Auto Post Attempt {attempt + 1}/{max_topic_attempts}")
+        print(f"{'='*70}\n")
         
-        topic, category = get_random_trending_topic()
-        if not topic:
-            print("❌ Could not find any trends. Retrying...")
-            time.sleep(3)
+        topic, category = get_vibe_coding_topic()
+        
+        if is_duplicate(topic):
+            print(f"⚠️ 중복 주제 감지: {topic}")
             continue
         
         title, body, cat, seo_data = generate_content(topic, category)
         
         if title and body:
             post_to_blogger(title, body, cat, seo_data)
-            print(f"\n✅ Successfully completed blog post generation!")
+            print(f"\n🎉 Vibe Coding 포스트 게시 완료! 주제: {topic}")
             break
         else:
-            print(f"\n⚠️ Content generation failed for topic: '{topic}'")
+            print(f"\n⚠️ Content generation failed for topic: {topic}")
             if attempt < max_topic_attempts - 1:
-                print(f"🔄 Trying with a different trending topic...\n")
                 time.sleep(3)
             else:
-                print(f"\n❌ Failed after {max_topic_attempts} attempts. Please try again later.")
+                print("\n❌ 모든 시도 실패")
                 exit(1)
