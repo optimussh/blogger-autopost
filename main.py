@@ -24,8 +24,10 @@ GEMINI_TEXT_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemi
 # 이미지 생성용 모델 (썸네일) - 구글 Imagen / Gemini Image API
 GEMINI_IMAGE_URL = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key={GEMINI_API_KEY}"
 
-# ====================== 2026년 3월 기준 가장 터지는 Vibe Coding Fallback 풀 (60개) ======================FALLBACK_TOPICS = [
-    "Claude Code Opus 4.6으로 하루 만에 MVP 만들기: Agent Teams 실전 가이드",
+# ====================== 2026년 3월 기준 가장 터지는 Vibe Coding Fallback 풀 (60개) ======================
+# 🚨 주의: 파이썬은 이 부분의 줄 맞춤(들여쓰기)에 엄청 예민합니다. 아래와 같이 똑같이 맞춰야 합니다.
+FALLBACK_TOPICS = [
+"Claude Code Opus 4.6으로 하루 만에 MVP 만들기: Agent Teams 실전 가이드",
     "Cursor IDE 2026 완전 정복: Composer 모드로 3배 빠른 풀스택 개발",
     "Windsurf AI IDE vs Cursor: 2026년 어떤 걸 골라야 할까? 가격·성능 비교",
     "Lovable.dev로 코드 없이 SaaS 앱 30분 만에 뚝딱 만드는 법",
