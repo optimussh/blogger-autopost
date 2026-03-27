@@ -4,6 +4,7 @@ import time
 import random
 import re
 import json
+import urllib.parse
 from datetime import datetime
 import xml.etree.ElementTree as ET
 
@@ -21,9 +22,6 @@ GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 
 # 텍스트 생성용 모델 (글쓰기)
 GEMINI_TEXT_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-# 이미지 생성용 모델 (썸네일) - 구글 Imagen / Gemini Image API
-GEMINI_IMAGE_URL = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key={GEMINI_API_KEY}"
-
 # ====================== 2026년 3월 기준 가장 터지는 Vibe Coding Fallback 풀 (60개) ======================
 # 🚨 주의: 파이썬은 이 부분의 줄 맞춤(들여쓰기)에 엄청 예민합니다. 아래와 같이 똑같이 맞춰야 합니다.
 FALLBACK_TOPICS = [
@@ -116,37 +114,6 @@ def convert_markdown_to_html(text):
     text = re.sub(r'`(.+?)`', r'<code>\1</code>', text)
     return text
 
-# ====================== (기능 추가) 구글 API로 이미지 생성 ======================
-def generate_google_image(image_prompt):
-    print(f"🎨 구글 API로 썸네일 이미지 생성 중... (프롬프트: {image_prompt[:50]}...)")
-    
-    headers = {'Content-Type': 'application/json'}
-    payload = {
-        "instances": [
-            {"prompt": f"A high-quality, vibrant flat design illustration for a tech blog. {image_prompt}. Modern tech aesthetic, clean lines, highly detailed."}
-        ],
-        "parameters": {
-            "sampleCount": 1,
-            "aspectRatio": "16:9"
-        }
-    }
-    
-    try:
-        response = requests.post(GEMINI_IMAGE_URL, headers=headers, json=payload, timeout=60)
-        response.raise_for_status()
-        data = response.json()
-        
-        # 구글 API는 이미지를 Base64 문자열로 반환합니다.
-        base64_img = data['predictions'][0]['bytesBase64Encoded']
-        print("✅ 이미지 생성 완료!")
-        
-        # HTML <img> 태그에 바로 넣을 수 있는 Data URI 형태로 반환
-        return f"data:image/jpeg;base64,{base64_img}"
-        
-    except Exception as e:
-        print(f"❌ 이미지 생성 실패: {e}")
-        return None
-
 # ====================== 구글 Blogger 연동 ======================
 def get_blogger_service():
     creds = Credentials(
@@ -171,7 +138,7 @@ def get_vibe_coding_topic():
     
     return "2026 AI Coding Trends", "AI Coding Tools"
 
-# ====================== (프롬프트 정교화) 콘텐츠 생성 ======================
+# ====================== 콘텐츠 및 프롬프트 생성 ======================
 def generate_content(topic, category):
     print(f"✍️ 글 작성 및 동적 이미지 프롬프트 생성 중: {topic}...")
     
@@ -184,8 +151,8 @@ def generate_content(topic, category):
     1. **어투:** "안녕하세요! VibeCoder입니다! 👋", "자, 오늘 바로 시작해 볼까요? 🔥" 처럼 독자에게 직접 말하는 듯한 활기찬 어투.
     2. **단락 구조:** 초보자도 바로 따라 할 수 있게 소제목(H2, H3)에 이모지와 숫자를 매겨 단계별 가이드 스타일로 작성하세요.
     3. **Formatting:** Use ONLY HTML tags. DO NOT use Markdown. 적극적으로 <strong>bold</strong>, <ul>, <li>, <blockquote> 태그를 사용하세요.
-    4. **Image Prompt (중요):** 당신이 작성한 글의 핵심 주제를 가장 잘 표현할 수 있는 썸네일 이미지 프롬프트를 **반드시 '영어'로** 작성해 주세요. 
-       (예시: A vibrant illustrative flat design of a developer building a full-stack app using Cursor IDE, neon blue and purple tones)
+    4. **Image Prompt (중요):** 당신이 작성한 글의 핵심 주제를 가장 잘 표현할 수 있는 썸네일 이미지 프롬프트를 **반드시 '영어 단어 나열' 형식으로** 작성해 주세요. 
+       (예시: developer, building full-stack app, cursor IDE, neon blue, purple tones, modern flat design, tech aesthetic)
     
     --- Structure your response EXACTLY like this ---
     
@@ -237,23 +204,19 @@ def generate_content(topic, category):
         seo_data = {}
         featured_image_prompt = None
         
-        # 정규식으로 데이터 추출
         meta_match = re.search(r'\[META_DESCRIPTION:\s*(.*?)\]', content)
         if meta_match: seo_data['meta_description'] = meta_match.group(1).strip()
         
         slug_match = re.search(r'\[URL_SLUG:\s*(.*?)\]', content)
         if slug_match: seo_data['url_slug'] = slug_match.group(1).strip()
         
-        # 글의 내용에 맞춰 AI가 스스로 짠 이미지 프롬프트 추출
         image_prompt_match = re.search(r'\[FEATURED_IMAGE_PROMPT:\s*(.*?)\]', content)
         if image_prompt_match: featured_image_prompt = image_prompt_match.group(1).strip()
         
-        # HTML 본문 추출
         article_start = content.find('<article>')
         article_end = len(content)
         body = content[article_start:article_end].strip() if article_start != -1 else content
         
-        # 제목 추출
         start = body.find('<h1>') + 4
         end = body.find('</h1>')
         title = body[start:end].strip() if start > 3 and end > start else topic
@@ -264,7 +227,7 @@ def generate_content(topic, category):
         print(f"❌ 텍스트 생성 중 오류: {e}")
         return None, None, None, {}, None
 
-def post_to_blogger(title, content, category, seo_data=None, base64_image_data=None):
+def post_to_blogger(title, content, category, seo_data=None, image_url=None):
     if not title or not content:
         return
 
@@ -273,10 +236,10 @@ def post_to_blogger(title, content, category, seo_data=None, base64_image_data=N
     
     labels = [category, "VibeCoding", "AI Tools"]
     
-    # 생성된 Base64 이미지를 HTML 최상단에 삽입
+    # 생성된 외부 이미지 URL을 HTML 최상단에 안전한 <img> 태그로 삽입 (블로거 필터링 통과)
     final_content = ""
-    if base64_image_data:
-        final_content += f'<div style="text-align: center; margin-bottom: 20px;"><img src="{base64_image_data}" alt="{title}" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);" /></div>\n\n'
+    if image_url:
+        final_content += f'<div style="text-align: center; margin-bottom: 25px;"><img src="{image_url}" alt="{title}" style="max-width: 100%; height: auto; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" /></div>\n\n'
     
     final_content += content
     
@@ -302,14 +265,17 @@ if __name__ == "__main__":
     title, body, cat, seo_data, featured_image_prompt = generate_content(topic, category)
     
     if title and body:
-        base64_image_data = None
+        image_url = None
         
-        # AI가 뽑아준 프롬프트가 있다면, 구글 이미지 API로 썸네일 생성!
+        # AI가 뽑아준 프롬프트를 URL 형식으로 안전하게 인코딩하여 즉석 이미지 생성 API 활용
         if featured_image_prompt:
-            base64_image_data = generate_google_image(featured_image_prompt)
+            print(f"🎨 프롬프트 기반 동적 이미지 링크 생성 중...")
+            safe_prompt = urllib.parse.quote(f"high quality flat design illustration for tech blog, {featured_image_prompt}")
+            image_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1024&height=576&nologo=true"
+            print(f"✅ 이미지 URL 생성 완료: {image_url}")
         
-        # 글과 이미지를 합쳐서 포스팅
-        post_to_blogger(title, body, cat, seo_data, base64_image_data)
+        # 글과 정상적인 이미지 URL을 합쳐서 포스팅
+        post_to_blogger(title, body, cat, seo_data, image_url)
         print(f"\n🎉 모든 과정 완료! 포스팅 주제: {topic}")
     else:
         print("\n❌ 콘텐츠 생성에 실패했습니다.")
