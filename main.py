@@ -19,7 +19,7 @@ except ImportError:
 
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 # 🚨 404 에러 방지: 존재하는 모델인 1.5-flash로 수정 완료
-GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"# ====================== 2026년 3월 기준 가장 터지는 Vibe Coding Fallback 풀 (60개) ======================
+GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
 FALLBACK_TOPICS = [
     "Claude Code Opus 4.6으로 하루 만에 MVP 만들기: Agent Teams 실전 가이드",
     "Cursor IDE 2026 완전 정복: Composer 모드로 3배 빠른 풀스택 개발",
