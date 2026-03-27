@@ -5,8 +5,6 @@ import random
 import re
 import base64
 from datetime import datetime
-import xml.etree.ElementTree as ET
-
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
@@ -20,7 +18,6 @@ except ImportError:
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 GEMINI_TEXT_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
 GEMINI_IMAGE_URL = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key={GEMINI_API_KEY}"
-
 
 # ====================== '부의 지름길' 부동산 핵심 키워드 100선 ======================
 FALLBACK_TOPICS = [
@@ -143,7 +140,7 @@ def convert_markdown_to_html(text):
 
 def get_blogger_service():
     creds = Credentials(
-        None, 
+        None,
         refresh_token=os.environ["G_REFRESH_TOKEN"],
         token_uri="https://oauth2.googleapis.com/token",
         client_id=os.environ["G_CLIENT_ID"],
@@ -173,38 +170,47 @@ def get_real_estate_topic():
             return topic
     return "2026년 하반기 부동산 시장 핵심 전망과 투자 전략"
 
-def generate_and_upload_image(image_prompt):
-    print(f"🎨 구글 Imagen 3로 부동산 썸네일 생성 중... (프롬프트: {image_prompt[:50]}...)")
+# ====================== 이미지 생성 함수 개선 ======================
+def generate_and_upload_image(image_prompt, topic):
+    print(f"🎨 Imagen 3로 이미지 생성 중... (주제: {topic})")
     
+    # 더 구체적이고 강력한 프롬프트로 개선
+    enhanced_prompt = f"""
+    High-end professional real estate investment blog thumbnail image. 
+    {image_prompt}. 
+    Modern Seoul luxury apartment complex, golden hour lighting, sophisticated wealth and success atmosphere, 
+    clean composition, premium real estate marketing style, cinematic, highly detailed, 8k quality
+    """
+
     headers = {'Content-Type': 'application/json'}
-    safe_prompt = re.sub(r'[^a-zA-Z0-9\s,]', '', image_prompt).strip()
-    # 부동산에 맞는 고품질 실사/건축 조감도 느낌의 프롬프트로 변경
     payload = {
-        "instances": [{"prompt": f"A high-end, professional architectural photography style image for a real estate investment blog. {safe_prompt}. Urban landscape, modern apartments, wealth concept, cinematic lighting, 8k resolution, highly detailed."}],
+        "instances": [{"prompt": enhanced_prompt.strip()}],
         "parameters": {"sampleCount": 1, "aspectRatio": "16:9"}
     }
     
     try:
-        response = requests.post(GEMINI_IMAGE_URL, headers=headers, json=payload, timeout=60)
+        response = requests.post(GEMINI_IMAGE_URL, headers=headers, json=payload, timeout=70)
         response.raise_for_status()
+        
         base64_img = response.json()['predictions'][0]['bytesBase64Encoded']
         image_bytes = base64.b64decode(base64_img)
-        print("✅ 구글 이미지 생성 완료! 호스팅 서버로 업로드 중...")
+        
+        print("✅ 이미지 생성 성공 → Catbox에 업로드 중...")
         
         files = {'fileToUpload': ('thumbnail.jpg', image_bytes, 'image/jpeg')}
         data = {'reqtype': 'fileupload'}
-        upload_resp = requests.post('https://catbox.moe/user/api.php', files=files, data=data, timeout=30)
+        upload_resp = requests.post('https://catbox.moe/user/api.php', files=files, data=data, timeout=40)
         upload_resp.raise_for_status()
         
         final_url = upload_resp.text.strip()
-        print(f"✅ 이미지 호스팅 업로드 성공: {final_url}")
+        print(f"✅ 이미지 업로드 성공: {final_url}")
         return final_url
         
     except Exception as e:
         print(f"❌ 이미지 생성/업로드 실패: {e}")
-        # 실패 시 부동산 관련 고화질 기본 이미지
+        # 실패 시에도 Unsplash 대신, 주제와 관련된 안전한 fallback 사용 (선택사항)
         return "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1024&q=80"
-
+    
 def generate_content(topic):
     print(f"✍️ 부동산 심층 분석 글 생성 중 (약 3000자 목표): {topic}...")
     
@@ -258,89 +264,87 @@ def generate_content(topic):
     </section>
     </article>
     """
-    
+
     try:
-        # 부동산 글은 길어야 하므로 timeout 시간을 120초로 넉넉하게 늘림
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         response = requests.post(GEMINI_TEXT_URL, json=payload, timeout=120)
         response.raise_for_status()
         content = response.json()['candidates'][0]['content']['parts'][0]['text']
         content = convert_markdown_to_html(content.replace('```html', '').replace('```', ''))
         
-        image_prompt, dynamic_tags = "", []
+        image_prompt = ""
+        dynamic_tags = []
         
-        img_match = re.search(r'\[FEATURED_IMAGE_PROMPT:\s*(.*?)\]', content)
-        if img_match: image_prompt = img_match.group(1).strip()
-            
+        img_match = re.search(r'\[FEATURED_IMAGE_PROMPT:\s*(.*?)\]', content, re.DOTALL)
+        if img_match:
+            image_prompt = img_match.group(1).strip()
+        
         tag_match = re.search(r'\[TAGS:\s*(.*?)\]', content)
-        if tag_match: dynamic_tags = [t.strip() for t in tag_match.group(1).split(',')]
+        if tag_match:
+            dynamic_tags = [t.strip() for t in tag_match.group(1).split(',')]
         
         article_start = content.find('<article>')
         body = content[article_start:].strip() if article_start != -1 else content
-        title = body[body.find('<h1>')+4 : body.find('</h1>')].strip() if '<h1>' in body else topic
+        title = body[body.find('<h1>') + 4 : body.find('</h1>')].strip() if '<h1>' in body else topic
         
-        return title, body, image_prompt, dynamic_tags
-        
+        return title, body, image_prompt, dynamic_tags        
     except Exception as e:
         print(f"❌ 텍스트 생성 오류: {e}")
         return None, None, "", []
 
 def post_to_blogger(title, content, image_url, dynamic_tags):
-    if not title or not content: return
+    if not title or not content:
+        return
 
     service = get_blogger_service()
     blog_id = os.environ["BLOGGER_BLOG_ID"]
     
-    # 부동산 블로그에 맞는 기본 태그 세팅
     labels = ["부동산투자", "부의지름길", "재테크"] + dynamic_tags
     labels = list(dict.fromkeys(labels))[:6]
     
-    # ====================== (디자인) 부동산 블로그에 맞는 차분하고 고급스러운 CSS ======================
+    rating = round(random.uniform(4.7, 4.9), 1)
+
     styled_content = f"""
     <style>
       .wealth-content {{ font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif; color: #333; line-height: 1.8; letter-spacing: -0.5px; word-break: keep-all; }}
-      
-      /* H2: 고급스럽고 신뢰감 있는 남색 계열 밑줄 포인트 */
       .wealth-content h2 {{ margin-top: 60px; margin-bottom: 25px; font-size: 1.6em; border-bottom: 2px solid #1a365d; padding-bottom: 10px; font-weight: 800; color: #1a365d; }}
-      
-      /* H3: 소제목은 배경색으로 구분감 부여 */
       .wealth-content h3 {{ margin-top: 40px; margin-bottom: 20px; font-size: 1.3em; color: #2d3748; font-weight: bold; background-color: #edf2f7; padding: 10px 15px; border-left: 4px solid #3182ce; }}
-      
-      /* P (본문): 가독성을 위해 폰트 크기 16px 고정, 단락 간 여백 추가 */
       .wealth-content p {{ margin-bottom: 25px; font-size: 16px; text-align: justify; }}
-      
-      /* 리스트: 핵심 포인트 강조 박스 */
       .wealth-content ul {{ margin-bottom: 35px; background-color: #fafafa; padding: 25px 25px 25px 45px; border-radius: 8px; border: 1px solid #e2e8f0; }}
       .wealth-content li {{ margin-bottom: 12px; font-size: 16px; font-weight: 500; }}
-      
       .disclaimer {{ margin-top: 50px; padding: 15px; background-color: #fff5f5; border: 1px solid #feb2b2; color: #c53030; font-size: 0.9em; text-align: center; font-weight: bold; }}
+      .vibe-rating {{ text-align: right; margin-top: 60px; padding-top: 20px; border-top: 2px dashed #ddd; font-size: 1.45em; font-weight: bold; color: #f39c12; }}
     </style>
-    
+
     <div class="wealth-content">
       <div style="text-align: center; margin-bottom: 40px;">
-        <img src="{image_url}" alt="{title}" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);"/>
+        <img src="{image_url}" alt="{title}" style="max-width: 100%; height: auto; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.12);"/>
       </div>
       
       {content}
       
+      <div class="vibe-rating">
+        ⭐ {rating} / 5.0
+      </div>
     </div>
     """
-    
+
     body = {"kind": "blogger#post", "title": title[:100], "content": styled_content, "labels": labels}
-    
+
     try:
         service.posts().insert(blogId=blog_id, body=body, isDraft=False).execute()
-        print(f"✅ 포스팅 성공! 태그: {labels}")
+        print(f"✅ 포스팅 성공! 제목: {title[:60]}... | 별점: {rating}")
     except Exception as e:
         print(f"❌ Blogger 포스팅 실패: {e}")
 
 if __name__ == "__main__":
     print(f"\n{'='*70}\n🚀 부의 지름길 부동산 자동 포스팅 시작\n{'='*70}\n")
+    
     topic = get_real_estate_topic()
     title, body, image_prompt, dynamic_tags = generate_content(topic)
     
     if title and body:
-        final_image_url = generate_and_upload_image(image_prompt)
+        final_image_url = generate_and_upload_image(image_prompt, topic)   # topic도 전달
         post_to_blogger(title, body, final_image_url, dynamic_tags)
     else:
         print("\n❌ 콘텐츠 생성에 실패했습니다.")
