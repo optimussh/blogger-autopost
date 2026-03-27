@@ -3,14 +3,14 @@ import requests
 import time
 import random
 import re
-import json
+import base64
 from datetime import datetime
 import xml.etree.ElementTree as ET
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-# 로컬 환경을 위한 dotenv (GitHub Actions에서는 없어도 패스하도록 설정)
+# 로컬 환경을 위한 dotenv
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -18,93 +18,120 @@ except ImportError:
     pass
 
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
-
-# 텍스트 생성용 모델 (글쓰기)
 GEMINI_TEXT_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-# 이미지 생성용 모델 (썸네일) - 구글 Imagen / Gemini Image API
 GEMINI_IMAGE_URL = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key={GEMINI_API_KEY}"
 
-# ====================== 2026년 3월 기준 가장 터지는 Vibe Coding Fallback 풀 (60개) ======================FALLBACK_TOPICS = [
-    "Claude Code Opus 4.6으로 하루 만에 MVP 만들기: Agent Teams 실전 가이드",
-    "Cursor IDE 2026 완전 정복: Composer 모드로 3배 빠른 풀스택 개발",
-    "Windsurf AI IDE vs Cursor: 2026년 어떤 걸 골라야 할까? 가격·성능 비교",
-    "Lovable.dev로 코드 없이 SaaS 앱 30분 만에 뚝딱 만드는 법",
-    "Google Antigravity 무료로 Claude Opus 4.6까지 쓰는 실전 팁",
-    "Claude Code vs Windsurf: Agentic 워크플로우 누가 더 강할까?",
-    "2026 AI 코딩 도구 가격 총정리: 월 2만원으로 최고 성능 내는 조합",
-    "Cursor Composer로 대형 코드베이스 리팩토링 없이 정리하는 법",
-    "Vibe Coding 초보자 로드맵: 챗봇 → AI Agent까지 5단계",
-    "Gemini Code Assist 실전 가이드: Google Cloud에서 가장 강력한 코딩 도구",
-    "Claude Opus 4.6 1M 컨텍스트로 대형 프로젝트 관리하는 실전 팁",
-    "Windsurf Arena Mode로 여러 AI 모델 동시에 비교하며 코딩하기",
-    "Lovable + Supabase + Vercel로 완전 무코드 MVP 배포하는 방법",
-    "AI 코딩 도구로 기술 부채 쌓이지 않게 하는 7가지 실전 방법",
-    "Claude Code vs OpenAI Codex: 2026년 코딩 에이전트 대전",
-    "2026 개발자 생산성 5배 높이는 Vibe Coding 워크플로우 구축법",
-    "Cursor vs GitHub Copilot X: 2026년 진짜 승자는?",
-    "Claude Code Agent로 버그 자동 수정하고 테스트까지 끝내는 법",
-    "Antigravity 초보자 추천 설정: 완전 무��� AI 코딩 시작하기",
-    "Vibe Coding으로 Micro-SaaS, Standalone 앱, Remix 템플릿 만들기",
-    "Windsurf Plan Mode로 복잡한 멀티파일 작업 자동화하는 실전 가이드",
-    "Claude 4.6 Sonnet vs Opus: 비용 절감하면서 성능 내는 선택법",
-    "Lovable.dev 2026 가격 비교: 진짜 돈 값 하는가?",
-    "AI Agent로 20시간 걸리는 작업을 50% 성공률로 끝내는 방법",
-    "Cursor IDE에서 Claude Opus 4.6 쓰는 최고의 프롬프트 템플릿 10개",
-    "2026 Agentic Coding 트렌드: Orchestration과 Multi-Agent 완전 정리",
-    "Gemini 3.1 Pro Code Assist로 Google Cloud 풀스택 앱 빠르게 만들기",
-    "Vibe Coding에서 Production 코드로 넘어가기: 보안·아키텍처 실전 팁",
-    "Windsurf Cascade AI Agent로 병렬 개발하는 실전 워크플로우",
-    "Claude Code로 기술 부채 없이 빠르게 MVP 출시하는 단계별 가이드",
-    "Antigravity + Claude Opus 조합으로 무���로 최고 성능 내는 법",
-    "Cursor에서 AI로 전체 리팩토링 하는 단계별 실전 가이드",
-    "2026년 개발자 필수 AI 스택: Cursor + Claude Code + Lovable 조합",
-    "Lovable로 만든 앱을 실제 수익 나는 Micro-SaaS로 키우는 법",
-    "AI 코딩 도구 보안 가이드: 취약점 자동 검사와 방어 전략",
-    "Claude Code Agent Skills 2026 최신 기능 완전 정복",
-    "Windsurf Wave 업데이트 후 달라진 점과 실전 활용법",
-    "Vibe Coding으로 게임·웹앱·SaaS 3개 동시 제작하기",
-    "Gemini vs Claude Code: 2026 코딩 성능·가격·속도 비교표",
-    "Cursor IDE Pro vs Free: 과연 돈 주고 쓸 가치가 있을까?",
-    "AI로 10배 빠른 개발하면서 코드 품질 유지하는 비법",
-    "Lovable.dev vs Bolt.new vs v0: 2026년 최고의 Vibe 플랫폼 비교",
-    "Claude Code로 대형 리팩토링 1시간 만에 끝내는 단계별 가이드",
-    "Antigravity 무료 플랜 한계와 극복하는 실전 팁",
-    "2026 AI IDE 전쟁: Cursor · Windsurf · Claude Code 승자 예측",
-    "Vibe Coding 초보자를 위한 첫 프로젝트 5가지 추천",
-    "Windsurf로 멀티 에이전트 동시에 작업하는 실전 팁",
-    "Claude Opus 4.6 128K 출력 토큰을 제대로 활용하는 사례 모음",
-    "AI 코딩 도구로 월 500만원 버는 Micro-SaaS 만드는 실전 가이드",
-    "Cursor Composer + Claude Code 최고의 협업 워크플로우",
-    "2026년 AI 코딩 도구로 기술 부채 없이 지속 가능한 개발하기",
-    "Lovable 노코드 → 실제 코드로 넘어가기 실전 전환 가이드",
-    "Gemini Code Assist + Google Cloud로 풀스택 앱 1시간 제작하기",
-    "Vibe Coding의 미래: Agentic Coding이 가져올 개발자 역할 변화",
-    "Claude Code vs Antigravity: 대형 코드베이스 작업 비교 2026",
-    "Windsurf vs Cursor: Agentic 개발 속도와 안정성 비교",
-    "2026 AI 코딩 트렌드: Human-in-the-Loop vs Fully Agentic",
-    "Claude Code로 SWE-bench 고득점 내는 실전 프롬프트 전략",
-    "Lovable로 빠른 프로토타입 검증 후 Cursor로 프로덕션 전환하기",
-    "2026 개발자 생산성 도구 스택: Claude Code + Cursor + Lovable 조합"
+
+# ====================== '부의 지름길' 부동산 핵심 키워드 100선 ======================
+FALLBACK_TOPICS = [
+    # 서울 주요 재개발/재건축
+    "한남뉴타운 3구역, 이주 단계에서 체크해야 할 투자 포인트",
+    "성수전략정비구역, 압구정급 위상으로 변모하는 진행 현황",
+    "노량진뉴타운, 여의도 배후 주거지로서의 압도적 가치",
+    "은평구 갈현1구역, 대단지 프리미엄과 사업성 분석",
+    "북아현뉴타운 2, 3구역 진행 단계와 매수 시점 잡기",
+    "장위뉴타운 잔여 구역, 실거주와 투자를 동시에 잡는 법",
+    "상계뉴타운, 4호선 연장과 창동·상계 신경제중심지 수혜",
+    "미아뉴타운 재개발, 동북권 최대 주거 타운의 변신",
+    "수색·증산뉴타운 입주권 vs 분양권, 세금 차이 정리",
+    "영등포구 신길뉴타운, 신안산선 개통 후 가치 변화 예측",
+    "거여·마천뉴타운, 위례신도시와 시너지 내는 정비사업",
+    "동대문구 이문·휘경뉴타운 3구역(이문 아이파크 자이) 분석",
+    "압구정 현대아파트 재건축, 신통기획으로 빨라진 사업 속도",
+    "반포 주공 1단지 재건축, 단군 이래 최대 정비사업 진행 현황",
+    "잠실 주공 5단지, 50층 높이로 재탄생하는 랜드마크",
+    "여의도 시범·광장아파트, 재건축을 통한 금융 중심지 변모",
+    "목동 신시가지 아파트 재건축 안전진단 통과 후 시세 변화",
+    "상계 주공 단지들, 노후 계획도시 특별법 적용 가능성",
+    "광진구 자양7구역 재건축, 한강변 입지의 미래 가치",
+    "동작구 흑석뉴타운 11구역, 서반포라 불리는 이유",
+    "강남구 대치 미도·선경아파트 재건축 통합 가이드",
+    "서초구 방배동 재건축 구역별 특징과 투자 금액대 비교",
+    "성북구 장위 10구역 사랑의교회 이슈 해결 후 사업 속도",
+    "도봉구 창동 주공 18, 19단지 예비안전진단 통과 의미",
+    "서대문구 홍은동·홍제동 재개발 구역 임장 보고서",
+    "용산구 서계동·청파동 신통기획 후보지 임장 포인트",
+    "중구 신당 10구역, 도심 재개발의 모범 사례 분석",
+    "강서구 방배 5, 6구역 프리미엄과 추가 분담금 예상",
+    "관악구 신림뉴타운 1, 2, 3구역 진행 현황 총정리",
+    "금천구 독산동·시흥동 소규모 재건축(가로주택정비사업) 현황",
+    
+    # 경기/수도권 핵심 정비사업
+    "광명뉴타운 11, 12구역 대장주 분석과 프리미엄 추이",
+    "성남 원도심 재개발(산성구역, 상대원2구역) 사업성 분석",
+    "수원 팔달뉴타운 재개발 완료 후 인프라 변화와 시세",
+    "안양시 비산동·호계동 재개발 단지들의 입주권 투자법",
+    "부천시 중동 신도시 재건축, 특별법 수혜 가능성 점검",
+    "고양시 일산 신도시 재건축 선도지구 지정 요건 분석",
+    "안산시 성포동·월피동 재건축과 신안산선 호재 정리",
+    "구리시 수택동·인창동 재개발 구역별 단계별 특징",
+    "의왕시 내손 다, 라구역 재개발 진행 현황과 가치 분석",
+    "군포시 산본 신도시 노후 단지 정비사업 추진 방향",
+    "평촌 신도시 재건축 선도지구 지정을 위한 주민 동의율",
+    "하남시 덕풍동·신장동 정비사업과 3기 신도시 시너지",
+    "남양주시 덕소뉴타운 한강변 입지의 희소성 분석",
+    "용인시 수지구 리모델링 vs 재건축, 투자 가치 승자는?",
+    "과천시 주공 아파트 재건축 잔여 단지(8, 9, 10단지) 현황",
+    "시흥시 은행동·대야동 재개발 구역별 사업성 비교",
+    "파주시 운정역 인근 재개발 후보지 선점 투자 전략",
+    "김포시 북변구역 재개발(북변 3, 4, 5구역) 분석",
+    "화성시 병점역 인근 재개발 추진 단지 임장기",
+    "오산시 궐동 재개발 구역의 저평가 요인 분석",
+    "평택시 합정동·세교동 정비사업과 삼성전자 호재",
+    "이천시 증포동 인근 소규모 재건축 사업 진행 상황",
+    "안성시 아양지구 인근 노후 단지 정비사업 전망",
+    "양주시 덕정역 인근 GTX-C 호재와 재개발 가능성",
+    "의정부시 장암구역·중앙구역 재개발 프리미엄 분석",
+    "동두천시 생연동 인근 저가 재건축 아파트 공략법",
+    "포천시 신읍동 인근 정비예정구역 진행 단계",
+    "여주시 하동 재개발 사업 진행과 한강 조망 가치",
+    "연천군 전곡읍 인근 노후 건물 정비사업 현황",
+    "가평군·양평군 외곽 지역 소규모 주택 정비사업 트렌드",
+
+    # 경매/공매 실전 기술
+    "경매 초보자가 반드시 알아야 할 '대항력' 있는 임차인 구별법",
+    "말소기준권리 6가지, 이것만 알면 권리분석 끝난다",
+    "대법원 경매 정보지에서 꼭 확인해야 할 '주의사항' 문구들",
+    "유치권 신고된 물건, 무조건 피해야 할까? 해결 가능성 분석",
+    "지분 경매로 소액 투자하기: 공유물분할청구소송 활용법",
+    "법정지상권 성립 여부 판단하는 3단계 체크리스트",
+    "빌라 경매 낙찰 후 명도(내보내기) 협상 기술 5가지",
+    "아파트 경매 입찰 전 미납 관리비 확인이 중요한 이유",
+    "경매 잔금 대출(경락잔금대출) 한도와 금리 잘 받는 법",
+    "명도 확인서와 인감증명서, 언제 주고받아야 안전할까?",
+    "공매와 경매의 결정적 차이점 3가지와 세금 혜택",
+    "법인 명의로 부동산 경매 입찰 시 장단점 총정리",
+    "깡통전세 매물 경매 시 주의할 점: 선순위 임차인 배당 분석",
+    "농지 취득 자격 증명(농취증) 발급 실패 시 보증금 몰수 피하는 법",
+    "상가 경매 시 수익률 계산법: 공실 위험과 렌트프리 확인",
+    "단독주택 경매 낙찰 후 리모델링 비용 산출 가이드",
+    "토지 경매 투자의 핵심, 용도지역과 도로 조건 확인법",
+    "유찰된 물건의 함정: 3회 이상 유찰된 매물 분석 노하우",
+    "입찰표 작성 시 실수하여 보증금 날리는 사례 방지법",
+    "경매 낙찰 후 취득세, 양도세 등 세금 절약하는 팁",
+
+    # 정책/세금/심화
+    "2026년 달라진 부동산 취득세 중과 세율 완벽 정리",
+    "1주택자 일시적 2주택 비과세 혜택 기간과 조건",
+    "양도소득세 장기보유특별공제 혜택 극대화하는 법",
+    "상속받은 부동산 양도 시 취득가액 산정 기준 주의사항",
+    "증여세 절감하는 '부담부증여' 전략의 실질적인 수익성",
+    "종부세 합산배제 신청 방법과 대상 주택 확인하기",
+    "주택임대사업자 등록 혜택과 의무 사항(2026년 기준)",
+    "전세자금대출 규제 변화와 무주택자 내 집 마련 전략",
+    "생애 최초 주택 구입자 취득세 감면 혜택 받는 법",
+    "주택담보대출(DSR) 규제가 정비사업 시장에 미치는 영향",
+    "재개발 입주권 보유 시 주택 수 산정 기준 총정리",
+    "관리처분인가 후 취득한 입주권의 토지 취득세율 계산법",
+    "재건축 초과이익 환수제 면제 금액과 산정 방식 변화",
+    "노후 계획도시 특별법 통과 후 1기 신도시 투자 유망 단지",
+    "GTX 노선별 개통 일정과 인근 정비사업지의 상관관계",
+    "역세권 청년주택 개발 호재가 있는 노후 주거지 분석",
+    "실거주 의무 폐지 여부에 따른 분양권 전매 제한 정리",
+    "금리 인하 시기에 유리한 부동산 대출 갈아타기 전략",
+    "아파트 브랜드 순위가 재건축 분담금에 미치는 영향",
+    "부동산 하락기에도 살아남는 '똘똘한 한 채' 선별 기준"
 ]
-# ====================== 유틸리티 함수 ======================
-def load_published_topics():
-    if os.path.exists("published_topics.json"):
-        with open("published_topics.json", "r", encoding="utf-8") as f:
-            return json.load(f)
-    return []
-
-def save_published_topic(topic):
-    topics = load_published_topics()
-    topics.append({"topic": topic, "date": datetime.now().isoformat()})
-    if len(topics) > 40:
-        topics = topics[-40:]
-    with open("published_topics.json", "w", encoding="utf-8") as f:
-        json.dump(topics, f, ensure_ascii=False, indent=2)
-
-def is_duplicate(topic):
-    topics = load_published_topics()
-    topic_lower = topic.lower()
-    return any(t["topic"].lower() in topic_lower or topic_lower in t["topic"].lower() for t in topics)
 
 def convert_markdown_to_html(text):
     text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
@@ -114,38 +141,6 @@ def convert_markdown_to_html(text):
     text = re.sub(r'`(.+?)`', r'<code>\1</code>', text)
     return text
 
-# ====================== (기능 추가) 구글 API로 이미지 생성 ======================
-def generate_google_image(image_prompt):
-    print(f"🎨 구글 API로 썸네일 이미지 생성 중... (프롬프트: {image_prompt[:50]}...)")
-    
-    headers = {'Content-Type': 'application/json'}
-    payload = {
-        "instances": [
-            {"prompt": f"A high-quality, vibrant flat design illustration for a tech blog. {image_prompt}. Modern tech aesthetic, clean lines, highly detailed."}
-        ],
-        "parameters": {
-            "sampleCount": 1,
-            "aspectRatio": "16:9"
-        }
-    }
-    
-    try:
-        response = requests.post(GEMINI_IMAGE_URL, headers=headers, json=payload, timeout=60)
-        response.raise_for_status()
-        data = response.json()
-        
-        # 구글 API는 이미지를 Base64 문자열로 반환합니다.
-        base64_img = data['predictions'][0]['bytesBase64Encoded']
-        print("✅ 이미지 생성 완료!")
-        
-        # HTML <img> 태그에 바로 넣을 수 있는 Data URI 형태로 반환
-        return f"data:image/jpeg;base64,{base64_img}"
-        
-    except Exception as e:
-        print(f"❌ 이미지 생성 실패: {e}")
-        return None
-
-# ====================== 구글 Blogger 연동 ======================
 def get_blogger_service():
     creds = Credentials(
         None, 
@@ -157,157 +152,195 @@ def get_blogger_service():
     )
     return build('blogger', 'v3', credentials=creds)
 
-def get_vibe_coding_topic():
-    print("🔍 Vibe Coding 주제 선택 중...")
-    random.shuffle(FALLBACK_TOPICS)
-    published_set = {t["topic"].lower() for t in load_published_topics()}
-    
-    for topic in FALLBACK_TOPICS:
-        if topic.lower() not in published_set and not is_duplicate(topic):
-            print(f"✅ 선택된 Vibe Coding 주제: {topic}")
-            return topic, "AI Coding Tools"
-    
-    return "2026 AI Coding Trends", "AI Coding Tools"
+def get_published_titles():
+    try:
+        service = get_blogger_service()
+        blog_id = os.environ["BLOGGER_BLOG_ID"]
+        request = service.posts().list(blogId=blog_id, maxResults=100, fetchBodies=False)
+        response = request.execute()
+        return [item.get('title', '').lower() for item in response.get('items', [])]
+    except Exception as e:
+        print(f"⚠️ 기존 발행 글 목록 가져오기 실패: {e}")
+        return []
 
-# ====================== (프롬프트 정교화) 콘텐츠 생성 ======================
-def generate_content(topic, category):
-    print(f"✍️ 글 작성 및 동적 이미지 프롬프트 생성 중: {topic}...")
+def get_real_estate_topic():
+    published_titles = get_published_titles()
+    random.shuffle(FALLBACK_TOPICS)
+    for topic in FALLBACK_TOPICS:
+        topic_lower = topic.lower()
+        is_duplicate = any(topic_lower in pub or pub in topic_lower for pub in published_titles if pub)
+        if not is_duplicate:
+            return topic
+    return "2026년 하반기 부동산 시장 핵심 전망과 투자 전략"
+
+def generate_and_upload_image(image_prompt):
+    print(f"🎨 구글 Imagen 3로 부동산 썸네일 생성 중... (프롬프트: {image_prompt[:50]}...)")
     
+    headers = {'Content-Type': 'application/json'}
+    safe_prompt = re.sub(r'[^a-zA-Z0-9\s,]', '', image_prompt).strip()
+    # 부동산에 맞는 고품질 실사/건축 조감도 느낌의 프롬프트로 변경
+    payload = {
+        "instances": [{"prompt": f"A high-end, professional architectural photography style image for a real estate investment blog. {safe_prompt}. Urban landscape, modern apartments, wealth concept, cinematic lighting, 8k resolution, highly detailed."}],
+        "parameters": {"sampleCount": 1, "aspectRatio": "16:9"}
+    }
+    
+    try:
+        response = requests.post(GEMINI_IMAGE_URL, headers=headers, json=payload, timeout=60)
+        response.raise_for_status()
+        base64_img = response.json()['predictions'][0]['bytesBase64Encoded']
+        image_bytes = base64.b64decode(base64_img)
+        print("✅ 구글 이미지 생성 완료! 호스팅 서버로 업로드 중...")
+        
+        files = {'fileToUpload': ('thumbnail.jpg', image_bytes, 'image/jpeg')}
+        data = {'reqtype': 'fileupload'}
+        upload_resp = requests.post('https://catbox.moe/user/api.php', files=files, data=data, timeout=30)
+        upload_resp.raise_for_status()
+        
+        final_url = upload_resp.text.strip()
+        print(f"✅ 이미지 호스팅 업로드 성공: {final_url}")
+        return final_url
+        
+    except Exception as e:
+        print(f"❌ 이미지 생성/업로드 실패: {e}")
+        # 실패 시 부동산 관련 고화질 기본 이미지
+        return "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1024&q=80"
+
+def generate_content(topic):
+    print(f"✍️ 부동산 심층 분석 글 생성 중 (약 3000자 목표): {topic}...")
+    
+    # 프롬프트를 부동산 전문가 페르소나 및 장문 작성 요구로 전면 수정
     prompt = f"""
-    당신은 2026년 가장 터지는 AI 코딩 전문 블로그 'AI 코딩 랩'의 전문 강사이자 'Vibe 코딩 스쿨'의 창립자 'VibeCoder'입니다.
-    
-    주제: "{topic}" 에 대해 **실전 가이드** 블로그 글을 작성해주세요.
+    당신은 2026년 대한민국 최고의 부동산 실전 투자 블로그 '부의 지름길'의 수석 분석가입니다.
+    주제: "{topic}" 에 대해 독자가 완벽히 이해하고 투자에 참고할 수 있는 **심층 분석(약 3,000자 이상)** 블로그 글을 작성해주세요.
     
     --- CRITICAL REQUIREMENTS ---
-    1. **어투:** "안녕하세요! VibeCoder입니다! 👋", "자, 오늘 바로 시작해 볼까요? 🔥" 처럼 독자에게 직접 말하는 듯한 활기찬 어투.
-    2. **단락 구조:** 초보자도 바로 따라 할 수 있게 소제목(H2, H3)에 이모지와 숫자를 매겨 단계별 가이드 스타일로 작성하세요.
-    3. **Formatting:** Use ONLY HTML tags. DO NOT use Markdown. 적극적으로 <strong>bold</strong>, <ul>, <li>, <blockquote> 태그를 사용하세요.
-    4. **Image Prompt (중요):** 당신이 작성한 글의 핵심 주제를 가장 잘 표현할 수 있는 썸네일 이미지 프롬프트를 **반드시 '영어'로** 작성해 주세요. 
-       (예시: A vibrant illustrative flat design of a developer building a full-stack app using Cursor IDE, neon blue and purple tones)
+    1. **어투:** "안녕하십니까, '부의 지름길' 수석 분석가입니다.", "성공적인 투자를 위해 반드시 체크하셔야 합니다." 등 신뢰감 있고 전문적이며 정중한 어투를 사용하세요.
+    2. **글의 깊이 (매우 중요):** 겉핥기식 요약이 절대 아닙니다. 각 섹션마다 구체적인 수치(예상 프리미엄, 입지 조건, 세금율 등 가상의 합리적 데이터라도), 역사적 배경, 장단점, 실제 투자 시뮬레이션 등을 길고 상세하게 풀어쓰세요. 최소 3,000자 분량을 목표로 내용을 풍부하게 확장하세요.
+    3. **Image Prompt:** 이 글의 내용을 시각화할 수 있는 영어 단어 나열 (예: luxury apartment complex in Seoul, sunset urban view, real estate investment concept)
+    4. **Tags:** 이 글과 관련된 검색 노출용 키워드 3개 (예: 재개발투자, 권리분석, 서울부동산)
+    5. **Formatting:** ONLY HTML tags (<h2>, <h3>, <p>, <ul>, <strong> 등). 절대 Markdown(##, **, *, - 등)을 쓰지 마세요.
     
     --- Structure your response EXACTLY like this ---
     
-    [META_DESCRIPTION: 150-160자 SEO 설명]
-    [URL_SLUG: keyword-rich-url-slug]
-    [FEATURED_IMAGE_PROMPT: (여기에 영어로 작성된 동적 이미지 프롬프트 삽입)]
+    [FEATURED_IMAGE_PROMPT: (여기에 영어 단어 프롬프트 삽입)]
+    [TAGS: 태그1, 태그2, 태그3]
     
     <article>
-    <header>
-    <h1>[이모지가 포함된 SEO 최적화된 제목]</h1>
-    </header>
-    
+    <header><h1>[이모지가 포함된 매력적인 제목]</h1></header>
     <section class="introduction">
-    <p>👋 [활기차고 실전적인 서론]</p>
+        <p>안녕하십니까, 부의 지름길 수석 분석가입니다. [해당 주제가 현재 시장에서 왜 중요한지, 어떤 기회가 있는지에 대한 깊이 있는 서론]</p>
     </section>
-    
     <section>
-    <h2>주요 포인트 5가지 🔥</h2>
-    <ul>
-    <li>🚀 [포인트]</li>
-    ...
-    </ul>
+        <h2>핵심 투자 포인트 요약 💡</h2>
+        <ul>
+            <li>[포인트 1 상세 설명]</li>
+            <li>[포인트 2 상세 설명]</li>
+            <li>[포인트 3 상세 설명]</li>
+        </ul>
     </section>
-    
     <section>
-    <h2>실전 가이드 단계별 따라 하기 🛠️</h2>
-    <h3>1️⃣ Step 1: [Vibe 스타일 소제목]</h3>
-    <p>[상세 설명 + 코드 예시 등]</p>
-    ...
+        <h2>심층 입지 분석 및 현재 진행 현황 🏢</h2>
+        <p>[지역의 인프라, 교통 호재, 학군, 사업 진행 단계 등을 매우 상세하게 서술. 단락을 여러 개로 나누어 작성]</p>
+        <p>[추가 상세 분석 내용...]</p>
     </section>
-    
+    <section>
+        <h2>수익성 분석 및 예상 투자금 시뮬레이션 💰</h2>
+        <p>[조합원 분양가, 일반 분양가 예상치, 인근 비교 단지(비교군) 시세 분석, 초기 투자금 및 프리미엄(P) 분석 등 매우 구체적인 투자금 흐름을 설명]</p>
+    </section>
+    <section>
+        <h2>투자 시 반드시 주의해야 할 리스크 ⚠️</h2>
+        <p>[세금 문제, 재건축 초과이익 환수제, 공사비 증액 갈등, 대항력 등 해당 주제와 관련된 치명적인 리스크와 대비책 설명]</p>
+    </section>
     <section class="conclusion">
-    <h2>Final Thoughts & CTA 💡</h2>
-    <p>[마무리 및 행동 촉구]</p>
+        <h2>부의 지름길 최종 코멘트 🧭</h2>
+        <p>[투자 결론 및 독자에게 주는 조언]</p>
+        <p><strong>*본 포스팅은 투자 참고용이며, 모든 투자의 책임은 본인에게 있습니다.*</strong></p>
     </section>
     </article>
     """
     
     try:
+        # 부동산 글은 길어야 하므로 timeout 시간을 120초로 넉넉하게 늘림
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
-        response = requests.post(GEMINI_TEXT_URL, json=payload, timeout=90)
+        response = requests.post(GEMINI_TEXT_URL, json=payload, timeout=120)
         response.raise_for_status()
-        result = response.json()
+        content = response.json()['candidates'][0]['content']['parts'][0]['text']
+        content = convert_markdown_to_html(content.replace('```html', '').replace('```', ''))
         
-        content = result['candidates'][0]['content']['parts'][0]['text']
-        content = content.replace('```html', '').replace('```', '')
-        content = convert_markdown_to_html(content)
+        image_prompt, dynamic_tags = "", []
         
-        seo_data = {}
-        featured_image_prompt = None
+        img_match = re.search(r'\[FEATURED_IMAGE_PROMPT:\s*(.*?)\]', content)
+        if img_match: image_prompt = img_match.group(1).strip()
+            
+        tag_match = re.search(r'\[TAGS:\s*(.*?)\]', content)
+        if tag_match: dynamic_tags = [t.strip() for t in tag_match.group(1).split(',')]
         
-        # 정규식으로 데이터 추출
-        meta_match = re.search(r'\[META_DESCRIPTION:\s*(.*?)\]', content)
-        if meta_match: seo_data['meta_description'] = meta_match.group(1).strip()
-        
-        slug_match = re.search(r'\[URL_SLUG:\s*(.*?)\]', content)
-        if slug_match: seo_data['url_slug'] = slug_match.group(1).strip()
-        
-        # 글의 내용에 맞춰 AI가 스스로 짠 이미지 프롬프트 추출
-        image_prompt_match = re.search(r'\[FEATURED_IMAGE_PROMPT:\s*(.*?)\]', content)
-        if image_prompt_match: featured_image_prompt = image_prompt_match.group(1).strip()
-        
-        # HTML 본문 추출
         article_start = content.find('<article>')
-        article_end = len(content)
-        body = content[article_start:article_end].strip() if article_start != -1 else content
+        body = content[article_start:].strip() if article_start != -1 else content
+        title = body[body.find('<h1>')+4 : body.find('</h1>')].strip() if '<h1>' in body else topic
         
-        # 제목 추출
-        start = body.find('<h1>') + 4
-        end = body.find('</h1>')
-        title = body[start:end].strip() if start > 3 and end > start else topic
-        
-        return title, body, category, seo_data, featured_image_prompt
+        return title, body, image_prompt, dynamic_tags
         
     except Exception as e:
-        print(f"❌ 텍스트 생성 중 오류: {e}")
-        return None, None, None, {}, None
+        print(f"❌ 텍스트 생성 오류: {e}")
+        return None, None, "", []
 
-def post_to_blogger(title, content, category, seo_data=None, base64_image_data=None):
-    if not title or not content:
-        return
+def post_to_blogger(title, content, image_url, dynamic_tags):
+    if not title or not content: return
 
     service = get_blogger_service()
     blog_id = os.environ["BLOGGER_BLOG_ID"]
     
-    labels = [category, "VibeCoding", "AI Tools"]
+    # 부동산 블로그에 맞는 기본 태그 세팅
+    labels = ["부동산투자", "부의지름길", "재테크"] + dynamic_tags
+    labels = list(dict.fromkeys(labels))[:6]
     
-    # 생성된 Base64 이미지를 HTML 최상단에 삽입
-    final_content = ""
-    if base64_image_data:
-        final_content += f'<div style="text-align: center; margin-bottom: 20px;"><img src="{base64_image_data}" alt="{title}" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);" /></div>\n\n'
+    # ====================== (디자인) 부동산 블로그에 맞는 차분하고 고급스러운 CSS ======================
+    styled_content = f"""
+    <style>
+      .wealth-content {{ font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif; color: #333; line-height: 1.8; letter-spacing: -0.5px; word-break: keep-all; }}
+      
+      /* H2: 고급스럽고 신뢰감 있는 남색 계열 밑줄 포인트 */
+      .wealth-content h2 {{ margin-top: 60px; margin-bottom: 25px; font-size: 1.6em; border-bottom: 2px solid #1a365d; padding-bottom: 10px; font-weight: 800; color: #1a365d; }}
+      
+      /* H3: 소제목은 배경색으로 구분감 부여 */
+      .wealth-content h3 {{ margin-top: 40px; margin-bottom: 20px; font-size: 1.3em; color: #2d3748; font-weight: bold; background-color: #edf2f7; padding: 10px 15px; border-left: 4px solid #3182ce; }}
+      
+      /* P (본문): 가독성을 위해 폰트 크기 16px 고정, 단락 간 여백 추가 */
+      .wealth-content p {{ margin-bottom: 25px; font-size: 16px; text-align: justify; }}
+      
+      /* 리스트: 핵심 포인트 강조 박스 */
+      .wealth-content ul {{ margin-bottom: 35px; background-color: #fafafa; padding: 25px 25px 25px 45px; border-radius: 8px; border: 1px solid #e2e8f0; }}
+      .wealth-content li {{ margin-bottom: 12px; font-size: 16px; font-weight: 500; }}
+      
+      .disclaimer {{ margin-top: 50px; padding: 15px; background-color: #fff5f5; border: 1px solid #feb2b2; color: #c53030; font-size: 0.9em; text-align: center; font-weight: bold; }}
+    </style>
     
-    final_content += content
+    <div class="wealth-content">
+      <div style="text-align: center; margin-bottom: 40px;">
+        <img src="{image_url}" alt="{title}" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);"/>
+      </div>
+      
+      {content}
+      
+    </div>
+    """
     
-    body = {
-        "kind": "blogger#post",
-        "title": title[:100],
-        "content": final_content,
-        "labels": labels
-    }
+    body = {"kind": "blogger#post", "title": title[:100], "content": styled_content, "labels": labels}
     
     try:
-        result = service.posts().insert(blogId=blog_id, body=body, isDraft=False).execute()
-        print(f"✅ Published successfully: {result.get('url', 'URL not available')}")
-        save_published_topic(title)
+        service.posts().insert(blogId=blog_id, body=body, isDraft=False).execute()
+        print(f"✅ 포스팅 성공! 태그: {labels}")
     except Exception as e:
         print(f"❌ Blogger 포스팅 실패: {e}")
 
-# ====================== 메인 실행 흐름 ======================
 if __name__ == "__main__":
-    print(f"\n{'='*70}\n🚀 Vibe Coding Auto Post 시작\n{'='*70}\n")
-    
-    topic, category = get_vibe_coding_topic()
-    title, body, cat, seo_data, featured_image_prompt = generate_content(topic, category)
+    print(f"\n{'='*70}\n🚀 부의 지름길 부동산 자동 포스팅 시작\n{'='*70}\n")
+    topic = get_real_estate_topic()
+    title, body, image_prompt, dynamic_tags = generate_content(topic)
     
     if title and body:
-        base64_image_data = None
-        
-        # AI가 뽑아준 프롬프트가 있다면, 구글 이미지 API로 썸네일 생성!
-        if featured_image_prompt:
-            base64_image_data = generate_google_image(featured_image_prompt)
-        
-        # 글과 이미지를 합쳐서 포스팅
-        post_to_blogger(title, body, cat, seo_data, base64_image_data)
-        print(f"\n🎉 모든 과정 완료! 포스팅 주제: {topic}")
+        final_image_url = generate_and_upload_image(image_prompt)
+        post_to_blogger(title, body, final_image_url, dynamic_tags)
     else:
         print("\n❌ 콘텐츠 생성에 실패했습니다.")
