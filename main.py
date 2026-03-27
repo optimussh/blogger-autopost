@@ -52,7 +52,7 @@ FALLBACK_TOPICS = [
     "강서구 방배 5, 6구역 프리미엄과 추가 분담금 예상",
     "관악구 신림뉴타운 1, 2, 3구역 진행 현황 총정리",
     "금천구 독산동·시흥동 소규모 재건축(가로주택정비사업) 현황",
-    
+
     # 경기/수도권 핵심 정비사업
     "광명뉴타운 11, 12구역 대장주 분석과 프리미엄 추이",
     "성남 원도심 재개발(산성구역, 상대원2구역) 사업성 분석",
@@ -170,51 +170,170 @@ def get_real_estate_topic():
             return topic
     return "2026년 하반기 부동산 시장 핵심 전망과 투자 전략"
 
-# ====================== 이미지 생성 함수 개선 ======================
+
+# ====================== 이미지 업로드 헬퍼 함수들 ======================
+
+def _upload_to_catbox(image_bytes):
+    """Catbox.moe 업로드 시도"""
+    print("  📤 Catbox 업로드 시도 중...")
+    files = {'fileToUpload': ('thumbnail.jpg', image_bytes, 'image/jpeg')}
+    data = {'reqtype': 'fileupload'}
+    resp = requests.post(
+        'https://catbox.moe/user/api.php',
+        files=files, data=data, timeout=40
+    )
+    resp.raise_for_status()
+    url = resp.text.strip()
+    if not url.startswith('http'):
+        raise ValueError(f"Catbox 응답이 URL 형식이 아님: {url!r}")
+    print(f"  ✅ Catbox 업로드 성공: {url}")
+    return url
+
+def _upload_to_litterbox(image_bytes):
+    """Litterbox.catbox.moe (72시간 임시) 업로드 시도"""
+    print("  📤 Litterbox 업로드 시도 중...")
+    files = {'fileToUpload': ('thumbnail.jpg', image_bytes, 'image/jpeg')}
+    data = {'reqtype': 'fileupload', 'time': '72h'}
+    resp = requests.post(
+        'https://litterbox.catbox.moe/resources/internals/api.php',
+        files=files, data=data, timeout=40
+    )
+    resp.raise_for_status()
+    url = resp.text.strip()
+    if not url.startswith('http'):
+        raise ValueError(f"Litterbox 응답이 URL 형식이 아님: {url!r}")
+    print(f"  ✅ Litterbox 업로드 성공: {url}")
+    return url
+
+def _upload_to_imgbb(image_bytes):
+    """imgBB 업로드 시도 (IMGBB_API_KEY 환경변수가 있는 경우)"""
+    api_key = os.environ.get("IMGBB_API_KEY", "")
+    if not api_key:
+        raise ValueError("IMGBB_API_KEY 환경변수가 설정되지 않음, 건너뜀")
+    print("  📤 imgBB 업로드 시도 중...")
+    b64 = base64.b64encode(image_bytes).decode()
+    resp = requests.post(
+        "https://api.imgbb.com/1/upload",
+        data={"key": api_key, "image": b64},
+        timeout=40
+    )
+    resp.raise_for_status()
+    result = resp.json()
+    if not result.get("success"):
+        raise ValueError(f"imgBB 업로드 실패: {result}")
+    url = result["data"]["url"]
+    print(f"  ✅ imgBB 업로드 성공: {url}")
+    return url
+
+def _make_data_url(image_bytes):
+    """Base64 Data URL 생성 (모든 업로드가 실패했을 때 최후 수단)"""
+    print("  📤 Base64 Data URL 생성 중...")
+    b64 = base64.b64encode(image_bytes).decode()
+    data_url = f"data:image/jpeg;base64,{b64}"
+    print(f"  ✅ Data URL 생성 완료 (크기: {len(image_bytes) // 1024}KB)")
+    return data_url
+
+
+# ====================== 이미지 생성 + 업로드 메인 함수 ======================
+
 def generate_and_upload_image(image_prompt, topic):
-    print(f"🎨 Imagen 3로 이미지 생성 중... (주제: {topic})")
-    
-    # 더 구체적이고 강력한 프롬프트로 개선
-    enhanced_prompt = f"""
-    High-end professional real estate investment blog thumbnail image. 
-    {image_prompt}. 
-    Modern Seoul luxury apartment complex, golden hour lighting, sophisticated wealth and success atmosphere, 
-    clean composition, premium real estate marketing style, cinematic, highly detailed, 8k quality
-    """
+    print(f"\n{'─'*50}")
+    print(f"🎨 [STEP 1] Imagen 3 이미지 생성 시작")
+    print(f"   주제: {topic}")
+
+    enhanced_prompt = (
+        f"High-end professional real estate investment blog thumbnail image. "
+        f"{image_prompt}. "
+        f"Modern Seoul luxury apartment complex, golden hour lighting, "
+        f"sophisticated wealth and success atmosphere, clean composition, "
+        f"premium real estate marketing style, cinematic, highly detailed, 8k quality"
+    )
 
     headers = {'Content-Type': 'application/json'}
     payload = {
         "instances": [{"prompt": enhanced_prompt.strip()}],
         "parameters": {"sampleCount": 1, "aspectRatio": "16:9"}
     }
-    
-    try:
-        response = requests.post(GEMINI_IMAGE_URL, headers=headers, json=payload, timeout=70)
-        response.raise_for_status()
-        
-        base64_img = response.json()['predictions'][0]['bytesBase64Encoded']
-        image_bytes = base64.b64decode(base64_img)
-        
-        print("✅ 이미지 생성 성공 → Catbox에 업로드 중...")
-        
-        files = {'fileToUpload': ('thumbnail.jpg', image_bytes, 'image/jpeg')}
-        data = {'reqtype': 'fileupload'}
-        upload_resp = requests.post('https://catbox.moe/user/api.php', files=files, data=data, timeout=40)
-        upload_resp.raise_for_status()
-        
-        final_url = upload_resp.text.strip()
-        print(f"✅ 이미지 업로드 성공: {final_url}")
-        return final_url
-        
-    except Exception as e:
-        print(f"❌ 이미지 생성/업로드 실패: {e}")
-        # 실패 시에도 Unsplash 대신, 주제와 관련된 안전한 fallback 사용 (선택사항)
+
+    # --- STEP 1: 이미지 생성 (최대 3회 재시도) ---
+    image_bytes = None
+    for attempt in range(1, 4):
+        try:
+            print(f"  🔄 Imagen API 요청 중... (시도 {attempt}/3)")
+            resp = requests.post(GEMINI_IMAGE_URL, headers=headers, json=payload, timeout=90)
+
+            # HTTP 에러 상세 출력
+            if not resp.ok:
+                print(f"  ❌ HTTP {resp.status_code} 오류: {resp.text[:300]}")
+                resp.raise_for_status()
+
+            data = resp.json()
+
+            # 응답 구조 검증
+            predictions = data.get('predictions')
+            if not predictions:
+                print(f"  ❌ Imagen API 응답에 'predictions' 없음. 전체 응답: {str(data)[:300]}")
+                raise ValueError("predictions 필드 없음")
+
+            b64_str = predictions[0].get('bytesBase64Encoded')
+            if not b64_str:
+                print(f"  ❌ predictions[0]에 'bytesBase64Encoded' 없음: {str(predictions[0])[:200]}")
+                raise ValueError("bytesBase64Encoded 필드 없음")
+
+            image_bytes = base64.b64decode(b64_str)
+            print(f"  ✅ 이미지 생성 성공! 크기: {len(image_bytes) // 1024}KB")
+            break
+
+        except Exception as e:
+            print(f"  ❌ 이미지 생성 시도 {attempt}/3 실패: {type(e).__name__}: {e}")
+            if attempt < 3:
+                wait = 5 * attempt
+                print(f"  ⏳ {wait}초 후 재시도...")
+                time.sleep(wait)
+
+    if image_bytes is None:
+        print(f"  🚨 이미지 생성 완전 실패 → Unsplash fallback 사용")
+        print(f"{'─'*50}\n")
         return "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1024&q=80"
-    
+
+    # --- STEP 2: 업로드 (여러 서비스 순차 시도) ---
+    print(f"\n🚀 [STEP 2] 이미지 업로드 시작 (다중 서비스 시도)")
+
+    upload_attempts = [
+        ("imgBB",      _upload_to_imgbb),
+        ("Catbox",     _upload_to_catbox),
+        ("Litterbox",  _upload_to_litterbox),
+    ]
+
+    for service_name, upload_fn in upload_attempts:
+        try:
+            url = upload_fn(image_bytes)
+            print(f"{'─'*50}\n")
+            return url
+        except Exception as e:
+            print(f"  ⚠️ {service_name} 업로드 실패: {type(e).__name__}: {e}")
+
+    # --- STEP 3: 모든 업로드 실패 → Data URL ---
+    print("  ⚠️ 모든 외부 업로드 실패 → Base64 Data URL로 직접 삽입")
+    try:
+        data_url = _make_data_url(image_bytes)
+        print(f"{'─'*50}\n")
+        return data_url
+    except Exception as e:
+        print(f"  ❌ Data URL 생성도 실패: {e}")
+
+    print(f"  🚨 최종 fallback: Unsplash")
+    print(f"{'─'*50}\n")
+    return "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1024&q=80"
+
+
+# ====================== 콘텐츠 생성 ======================
+
 def generate_content(topic):
-    print(f"✍️ 부동산 심층 분석 글 생성 중 (약 3000자 목표): {topic}...")
-    
-    # 프롬프트를 부동산 전문가 페르소나 및 장문 작성 요구로 전면 수정
+    print(f"\n{'─'*50}")
+    print(f"✍️  [STEP 0] 블로그 글 생성 중 (약 3000자 목표)")
+    print(f"   주제: {topic}")
+
     prompt = f"""
     당신은 2026년 대한민국 최고의 부동산 실전 투자 블로그 '부의 지름길'의 수석 분석가입니다.
     주제: "{topic}" 에 대해 독자가 완벽히 이해하고 투자에 참고할 수 있는 **심층 분석(약 3,000자 이상)** 블로그 글을 작성해주세요.
@@ -271,38 +390,49 @@ def generate_content(topic):
         response.raise_for_status()
         content = response.json()['candidates'][0]['content']['parts'][0]['text']
         content = convert_markdown_to_html(content.replace('```html', '').replace('```', ''))
-        
+
         image_prompt = ""
         dynamic_tags = []
-        
+
         img_match = re.search(r'\[FEATURED_IMAGE_PROMPT:\s*(.*?)\]', content, re.DOTALL)
         if img_match:
             image_prompt = img_match.group(1).strip()
-        
+
         tag_match = re.search(r'\[TAGS:\s*(.*?)\]', content)
         if tag_match:
             dynamic_tags = [t.strip() for t in tag_match.group(1).split(',')]
-        
+
         article_start = content.find('<article>')
         body = content[article_start:].strip() if article_start != -1 else content
-        title = body[body.find('<h1>') + 4 : body.find('</h1>')].strip() if '<h1>' in body else topic
-        
-        return title, body, image_prompt, dynamic_tags        
+        title = body[body.find('<h1>') + 4: body.find('</h1>')].strip() if '<h1>' in body else topic
+
+        print(f"  ✅ 글 생성 성공: {title[:60]}...")
+        print(f"  📌 Image Prompt: {image_prompt[:80]}...")
+        print(f"  🏷️  Tags: {dynamic_tags}")
+        return title, body, image_prompt, dynamic_tags
+
     except Exception as e:
-        print(f"❌ 텍스트 생성 오류: {e}")
+        print(f"  ❌ 텍스트 생성 오류: {type(e).__name__}: {e}")
         return None, None, "", []
+
+
+# ====================== Blogger 포스팅 ======================
 
 def post_to_blogger(title, content, image_url, dynamic_tags):
     if not title or not content:
+        print("❌ 제목 또는 본문이 비어 있어 포스팅을 건너뜁니다.")
         return
 
     service = get_blogger_service()
     blog_id = os.environ["BLOGGER_BLOG_ID"]
-    
+
     labels = ["부동산투자", "부의지름길", "재테크"] + dynamic_tags
     labels = list(dict.fromkeys(labels))[:6]
-    
+
     rating = round(random.uniform(4.7, 4.9), 1)
+
+    # 이미지가 Data URL이면 alt 속성만 변경, 그 외 동일
+    img_tag = f'<img src="{image_url}" alt="{title}" style="max-width: 100%; height: auto; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.12);"/>'
 
     styled_content = f"""
     <style>
@@ -318,11 +448,11 @@ def post_to_blogger(title, content, image_url, dynamic_tags):
 
     <div class="wealth-content">
       <div style="text-align: center; margin-bottom: 40px;">
-        <img src="{image_url}" alt="{title}" style="max-width: 100%; height: auto; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.12);"/>
+        {img_tag}
       </div>
-      
+
       {content}
-      
+
       <div class="vibe-rating">
         ⭐ {rating} / 5.0
       </div>
@@ -333,18 +463,41 @@ def post_to_blogger(title, content, image_url, dynamic_tags):
 
     try:
         service.posts().insert(blogId=blog_id, body=body, isDraft=False).execute()
-        print(f"✅ 포스팅 성공! 제목: {title[:60]}... | 별점: {rating}")
+        print(f"\n✅ 포스팅 성공!")
+        print(f"   제목: {title[:60]}...")
+        print(f"   별점: {rating} | 태그: {labels}")
     except Exception as e:
-        print(f"❌ Blogger 포스팅 실패: {e}")
+        print(f"\n❌ Blogger 포스팅 실패: {type(e).__name__}: {e}")
+
+
+# ====================== 메인 실행 ======================
 
 if __name__ == "__main__":
-    print(f"\n{'='*70}\n🚀 부의 지름길 부동산 자동 포스팅 시작\n{'='*70}\n")
-    
+    print(f"\n{'='*70}")
+    print(f"🚀 부의 지름길 부동산 자동 포스팅 시작")
+    print(f"   실행 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"{'='*70}\n")
+
     topic = get_real_estate_topic()
+    print(f"📌 선정된 주제: {topic}\n")
+
     title, body, image_prompt, dynamic_tags = generate_content(topic)
-    
+
     if title and body:
-        final_image_url = generate_and_upload_image(image_prompt, topic)   # topic도 전달
+        final_image_url = generate_and_upload_image(image_prompt, topic)
+        
+        # 어떤 방식으로 이미지가 들어갔는지 최종 확인 로그
+        if final_image_url.startswith("data:"):
+            print("📎 이미지 방식: Base64 Data URL (외부 업로드 없음)")
+        elif "unsplash" in final_image_url:
+            print("🖼️  이미지 방식: Unsplash Fallback (이미지 생성 실패)")
+        else:
+            print(f"🌐 이미지 방식: 외부 CDN ({final_image_url[:60]}...)")
+        
         post_to_blogger(title, body, final_image_url, dynamic_tags)
     else:
-        print("\n❌ 콘텐츠 생성에 실패했습니다.")
+        print("\n❌ 콘텐츠 생성에 실패했습니다. 로그를 확인해주세요.")
+
+    print(f"\n{'='*70}")
+    print(f"🏁 자동 포스팅 종료: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"{'='*70}\n")
