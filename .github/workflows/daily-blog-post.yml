@@ -32,6 +32,7 @@ jobs:
           G_REFRESH_TOKEN: ${{ secrets.G_REFRESH_TOKEN }}
           BLOGGER_BLOG_ID: ${{ secrets.BLOGGER_BLOG_ID }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          IMGBB_API_KEY: ${{ secrets.IMGBB_API_KEY }}
         run: python main.py
 
       - name: Success Notification

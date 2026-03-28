@@ -17,10 +17,10 @@ except ImportError:
 
 # 환경 변수 설정
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
-HF_TOKEN = os.environ.get("HF_TOKEN")  # Hugging Face 토큰 (필수)
+HF_TOKEN = os.environ.get("HF_TOKEN")
+IMGBB_API_KEY = os.environ.get("IMGBB_API_KEY") # ImgBB API 키 추가
 
 GEMINI_TEXT_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-
 
 # ====================== '부의 지름길' 부동산 핵심 키워드 100선 ======================
 FALLBACK_TOPICS = [
@@ -133,6 +133,7 @@ FALLBACK_TOPICS = [
     "부동산 하락기에도 살아남는 '똘똘한 한 채' 선별 기준"
 ]
 
+
 def convert_markdown_to_html(text):
     text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
     text = re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
@@ -168,24 +169,19 @@ def get_real_estate_topic():
     random.shuffle(FALLBACK_TOPICS)
     for topic in FALLBACK_TOPICS:
         topic_lower = topic.lower()
-        is_duplicate = any(topic_lower in pub or pub in topic_lower for pub in published_titles if pub)
-        if not is_duplicate:
+        if not any(topic_lower in pub or pub in topic_lower for pub in published_titles if pub):
             return topic
     return "2026년 하반기 부동산 시장 핵심 전망과 투자 전략"
 
-# ====================== Hugging Face 이미지 생성 (최신 API 주소 반영) ======================
+# ====================== Hugging Face 이미지 생성 ======================
 def generate_image_hf(prompt):
-    """Hugging Face API를 사용하되, 로딩(503) 에러와 타임아웃을 방어하는 강력한 재시도 로직 적용"""
     print(f"🎨 Hugging Face 이미지 생성 시작...")
-    
     if not HF_TOKEN:
-        print("❌ HF_TOKEN이 없습니다. 환경변수(.env 또는 Github Secrets)를 확인해주세요.")
+        print("❌ HF_TOKEN이 없습니다.")
         return None
 
     headers = {"Authorization": f"Bearer {HF_TOKEN}"}
     payload = {"inputs": prompt}
-    
-    # 허깅페이스 최신 API 라우터 주소로 업데이트됨
     models = [
         "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
         "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0"
@@ -194,57 +190,63 @@ def generate_image_hf(prompt):
     for model_url in models:
         model_name = model_url.split('/')[-1]
         print(f"📍 시도 중인 모델: {model_name}")
-        max_retries = 6 # 최대 6번 재시도 
-        
-        for attempt in range(max_retries):
+        for attempt in range(6):
             try:
                 response = requests.post(model_url, headers=headers, json=payload, timeout=40)
-                
                 if response.status_code == 200:
-                    image_bytes = response.content
-                    print(f"✅ 이미지 생성 성공! (크기: {len(image_bytes)//1024}KB)")
-                    return image_bytes
-                    
+                    print(f"✅ 이미지 생성 성공!")
+                    return response.content
                 elif response.status_code == 503:
-                    # 모델이 서버 메모리에 로드되는 중 (Cold Start)
-                    try:
-                        estimated_time = response.json().get('estimated_time', 10)
-                    except:
-                        estimated_time = 10
-                    wait_time = min(estimated_time, 15) # 너무 길면 최대 15초씩 끊어서 대기
-                    print(f"   ⏳ 모델 로딩 중... {wait_time:.1f}초 대기 후 재시도 ({attempt+1}/{max_retries})")
+                    wait_time = min(response.json().get('estimated_time', 10), 15)
+                    print(f"   ⏳ 로딩 중... {wait_time:.1f}초 대기")
                     time.sleep(wait_time)
                     continue
-                    
                 else:
-                    print(f"   ⚠️ API 에러 ({response.status_code}): {response.text}")
-                    break # 503이 아닌 다른 에러면 이 모델은 포기하고 2순위 모델로 넘어감
-                    
-            except requests.exceptions.Timeout:
-                print(f"   ⏰ 타임아웃 발생. 재시도 중... ({attempt+1}/{max_retries})")
-                time.sleep(5)
+                    print(f"   ⚠️ API 에러: {response.text}")
+                    break
             except Exception as e:
                 print(f"   ❌ 예기치 않은 오류: {e}")
                 break
-                
-    print("❌ 모든 모델에서 이미지 생성에 실패했습니다.")
+    print("❌ 이미지 생성 실패.")
     return None
+
+# ====================== ImgBB 이미지 업로드 ======================
+def upload_image_to_imgbb(image_bytes):
+    """생성된 이미지를 ImgBB에 업로드하고 짧은 URL을 반환합니다."""
+    print("☁️ ImgBB에 이미지 업로드 중...")
+    if not IMGBB_API_KEY:
+        print("❌ IMGBB_API_KEY가 없습니다.")
+        return None
+        
+    try:
+        url = "https://api.imgbb.com/1/upload"
+        payload = {
+            "key": IMGBB_API_KEY,
+            "image": base64.b64encode(image_bytes).decode('utf-8')
+        }
+        response = requests.post(url, data=payload, timeout=30)
+        response.raise_for_status()
+        
+        img_url = response.json()["data"]["url"]
+        print(f"✅ ImgBB 업로드 성공: {img_url}")
+        return img_url
+    except Exception as e:
+        print(f"❌ ImgBB 업로드 실패: {e}")
+        return None
 
 # ====================== 콘텐츠 생성 ======================
 def generate_content(topic):
     print(f"✍️ 부동산 심층 분석 글 생성 중: {topic}")
-
     prompt = f"""
     당신은 2026년 대한민국 최고의 부동산 실전 투자 블로그 '부의 지름길'의 수석 분석가입니다.
     주제: "{topic}" 에 대해 독자가 완벽히 이해하고 투자에 참고할 수 있는 **심층 분석(약 3,000자 이상)** 블로그 글을 작성해주세요.
 
     --- CRITICAL REQUIREMENTS ---
     1. 어투: 신뢰감 있고 전문적이며 정중한 어투 사용
-    2. 글의 깊이: 구체적인 수치, 역사적 배경, 장단점, 투자 시뮬레이션 등을 상세하게 작성
-    3. Formatting: ONLY HTML tags 사용. 절대 Markdown 코드 블록(```html, ``` 등)을 출력하지 마세요. 순수 텍스트로 바로 시작하세요.
+    2. Formatting: ONLY HTML tags 사용. 절대 Markdown 코드 블록(```html, ``` 등)을 출력하지 마세요.
 
     --- Structure your response EXACTLY like this ---
-    [IMAGE_PROMPT: (이 블로그 썸네일에 어울리는 고품질 실사풍 영문 프롬프트를 1~2문장으로 작성. 반드시 영어로만 작성. 예: A highly detailed, photorealistic wide-angle shot of a luxury modern apartment complex in Seoul during sunset, wealth concept, cinematic lighting, 8k)]
+    [IMAGE_PROMPT: (이 블로그 썸네일에 어울리는 고품질 실사풍 영문 프롬프트를 1~2문장으로 작성)]
     [TAGS: 태그1, 태그2, 태그3, 태그4]
 
     <article>
@@ -254,22 +256,14 @@ def generate_content(topic):
     </section>
     <section>
         <h2>핵심 투자 포인트 요약 💡</h2>
-        <ul><li>[포인트 1]</li><li>[포인트 2]</li><li>[포인트 3]</li></ul>
+        <ul><li>[포인트 1]</li></ul>
     </section>
     <section>
-        <h2>심층 입지 분석 및 현재 진행 현황 🏢</h2>
-        <p>[상세 내용]</p>
-    </section>
-    <section>
-        <h2>수익성 분석 및 예상 투자금 시뮬레이션 💰</h2>
-        <p>[상세 내용]</p>
-    </section>
-    <section>
-        <h2>투자 시 반드시 주의해야 할 리스크 ⚠️</h2>
+        <h2>상세 분석 🏢</h2>
         <p>[상세 내용]</p>
     </section>
     <section class="conclusion">
-        <h2>부의 지름길 최종 코멘트 🧭</h2>
+        <h2>최종 코멘트 🧭</h2>
         <p>[결론]</p>
         <p><strong>*본 포스팅은 투자 참고용이며, 모든 투자의 책임은 본인에게 있습니다.*</strong></p>
     </section>
@@ -282,32 +276,27 @@ def generate_content(topic):
         response.raise_for_status()
         content = response.json()['candidates'][0]['content']['parts'][0]['text']
         
-        # 가끔 생성되는 마크다운 잔재 완벽 제거
         content = content.replace('```html', '').replace('```', '').strip()
         content = convert_markdown_to_html(content)
 
-        # 1. 이미지 프롬프트 추출
         img_match = re.search(r'\[IMAGE_PROMPT:\s*(.*?)\]', content)
-        image_prompt = img_match.group(1).strip() if img_match else f"Modern luxury real estate in Seoul, professional architectural photography, high quality"
+        image_prompt = img_match.group(1).strip() if img_match else "Modern luxury real estate in Seoul"
 
-        # 2. 태그 추출
         tag_match = re.search(r'\[TAGS:\s*(.*?)\]', content)
         dynamic_tags = [t.strip() for t in tag_match.group(1).split(',')] if tag_match else []
 
-        # 3. 본문 및 제목 추출
         article_start = content.find('<article>')
         body = content[article_start:].strip() if article_start != -1 else content
         title = body[body.find('<h1>') + 4 : body.find('</h1>')].strip() if '<h1>' in body else topic
 
         print(f"✅ 글 생성 성공: {title[:50]}...")
-        print(f"🎨 추출된 이미지 프롬프트: {image_prompt}")
         return title, body, dynamic_tags, image_prompt
-
     except Exception as e:
         print(f"❌ 텍스트 생성 오류: {e}")
         return None, None, [], None
 
-def post_to_blogger(title, content, dynamic_tags, image_bytes=None):
+# ====================== 블로거 포스팅 ======================
+def post_to_blogger(title, content, dynamic_tags, image_url=None):
     if not title or not content:
         return
 
@@ -318,10 +307,9 @@ def post_to_blogger(title, content, dynamic_tags, image_bytes=None):
     labels = list(dict.fromkeys(labels))[:6]
     rating = round(random.uniform(4.7, 4.9), 1)
 
-    # 이미지 처리
-    if image_bytes:
-        b64 = base64.b64encode(image_bytes).decode('utf-8')
-        img_tag = f'<img src="data:image/jpeg;base64,{b64}" alt="{title}" style="max-width: 100%; height: auto; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.12); margin-bottom: 30px;"/>'
+    # Base64 대신 깔끔한 URL 사용 + Blogger 요약(더보기) 기능인 추가
+    if image_url:
+        img_tag = f'<div style="text-align: center;"><img src="{image_url}" alt="{title}" style="max-width: 100%; height: auto; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.12); margin-bottom: 30px;"/></div>\n\n'
     else:
         img_tag = ''
 
@@ -329,7 +317,6 @@ def post_to_blogger(title, content, dynamic_tags, image_bytes=None):
     <style>
       .wealth-content {{ font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif; color: #333; line-height: 1.8; letter-spacing: -0.5px; word-break: keep-all; }}
       .wealth-content h2 {{ margin-top: 60px; margin-bottom: 25px; font-size: 1.6em; border-bottom: 2px solid #1a365d; padding-bottom: 10px; font-weight: 800; color: #1a365d; }}
-      .wealth-content h3 {{ margin-top: 40px; margin-bottom: 20px; font-size: 1.3em; color: #2d3748; font-weight: bold; background-color: #edf2f7; padding: 10px 15px; border-left: 4px solid #3182ce; }}
       .wealth-content p {{ margin-bottom: 25px; font-size: 16px; text-align: justify; }}
       .wealth-content ul {{ margin-bottom: 35px; background-color: #fafafa; padding: 25px 25px 25px 45px; border-radius: 8px; border: 1px solid #e2e8f0; }}
       .wealth-content li {{ margin-bottom: 12px; font-size: 16px; font-weight: 500; }}
@@ -339,9 +326,7 @@ def post_to_blogger(title, content, dynamic_tags, image_bytes=None):
     <div class="wealth-content">
       {img_tag}
       {content}
-      <div class="vibe-rating">
-        ⭐ {rating} / 5.0
-      </div>
+      <div class="vibe-rating">⭐ {rating} / 5.0</div>
     </div>
     """
 
@@ -349,33 +334,26 @@ def post_to_blogger(title, content, dynamic_tags, image_bytes=None):
 
     try:
         service.posts().insert(blogId=blog_id, body=body, isDraft=False).execute()
-        print(f"✅ 포스팅 성공! 제목: {title[:60]}... | 별점: {rating}")
+        print(f"✅ 포스팅 성공! 제목: {title[:60]}...")
     except Exception as e:
         print(f"❌ Blogger 포스팅 실패: {e}")
 
 if __name__ == "__main__":
     print(f"\n{'='*70}")
     print("🚀 부의 지름길 부동산 자동 포스팅 시작")
-    print(f" 실행 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'='*70}\n")
 
     topic = get_real_estate_topic()
-    print(f"📌 선정된 주제: {topic}\n")
-
-    # 1. Gemini로 글, 태그, 영문 이미지 프롬프트 한 번에 생성
     title, body, dynamic_tags, image_prompt = generate_content(topic)
 
     if title and body:
-        # 2. 추출된 영문 프롬프트로 Hugging Face 이미지 생성
-        image_bytes = None
+        # 1. Hugging Face로 이미지 생성 (Bytes)
+        image_url = None
         if image_prompt:
             image_bytes = generate_image_hf(image_prompt)
+            # 2. 생성된 이미지를 ImgBB에 업로드하고 짧은 URL 획득
+            if image_bytes:
+                image_url = upload_image_to_imgbb(image_bytes)
 
-        # 3. 블로거에 포스팅
-        post_to_blogger(title, body, dynamic_tags, image_bytes)
-    else:
-        print("❌ 콘텐츠 생성에 실패하여 포스팅을 취소합니다.")
-
-    print(f"\n{'='*70}")
-    print(f"🏁 자동 포스팅 종료: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"{'='*70}")
+        # 3. 블로거에 포스팅 (짧은 URL 사용)
+        post_to_blogger(title, body, dynamic_tags, image_url)
