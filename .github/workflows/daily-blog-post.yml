@@ -31,6 +31,7 @@ jobs:
           G_CLIENT_SECRET: ${{ secrets.G_CLIENT_SECRET }}
           G_REFRESH_TOKEN: ${{ secrets.G_REFRESH_TOKEN }}
           BLOGGER_BLOG_ID: ${{ secrets.BLOGGER_BLOG_ID }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: python main.py
 
       - name: Success Notification
