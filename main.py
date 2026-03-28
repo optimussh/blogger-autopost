@@ -4,6 +4,7 @@ import random
 import re
 import base64
 import time
+import urllib.parse
 from datetime import datetime
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -15,11 +16,9 @@ try:
 except ImportError:
     pass
 
+# 환경 변수 설정
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
-HF_TOKEN = os.environ.get("HF_TOKEN")  # Hugging Face 토큰 (필수)
-
 GEMINI_TEXT_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-HF_IMAGE_URL = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
 
 
 # ====================== '부의 지름길' 부동산 핵심 키워드 100선 ======================
@@ -133,6 +132,7 @@ FALLBACK_TOPICS = [
     "부동산 하락기에도 살아남는 '똘똘한 한 채' 선별 기준"
 ]
 
+
 def convert_markdown_to_html(text):
     text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
     text = re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
@@ -173,39 +173,32 @@ def get_real_estate_topic():
             return topic
     return "2026년 하반기 부동산 시장 핵심 전망과 투자 전략"
 
-# ====================== Hugging Face 이미지 생성 ======================
-def generate_image_hf(prompt):
-    """Hugging Face Flux.1-schnell 모델로 이미지 생성"""
-    print(f"🎨 Hugging Face Flux 이미지 생성 시작...")
-
-    headers = {
-        "Authorization": f"Bearer {HF_TOKEN}",
-        "Content-Type": "application/json"
-    }
+# ====================== Pollinations.ai 무료 이미지 생성 ======================
+def generate_image_pollinations(prompt):
+    """Pollinations.ai를 활용한 빠르고 안정적인 무료 이미지 생성"""
+    print(f"🎨 Pollinations 이미지 생성 시작...")
     
-    payload = {
-        "inputs": prompt,
-        "parameters": {"num_inference_steps": 20}
-    }
-
+    # URL에 안전하게 들어가도록 프롬프트 인코딩
+    encoded_prompt = urllib.parse.quote(prompt)
+    
+    # 캐싱 방지 및 다양한 이미지를 위한 랜덤 시드
+    seed = random.randint(1, 100000)
+    # 1024x576 (16:9 썸네일 비율), 워터마크 제거
+    url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=576&nologo=true&seed={seed}"
+    
     try:
-        response = requests.post(HF_IMAGE_URL, headers=headers, json=payload, timeout=60)
-        
-        if response.status_code == 503:  # 모델 로딩 중
-            print("   ⏳ 모델 로딩 중... 10초 대기 후 재시도")
-            time.sleep(10)
-            response = requests.post(HF_IMAGE_URL, headers=headers, json=payload, timeout=60)
-
+        response = requests.get(url, timeout=60)
         response.raise_for_status()
+        
         image_bytes = response.content
         print(f"✅ 이미지 생성 성공 (크기: {len(image_bytes)//1024}KB)")
         return image_bytes
-
+        
     except Exception as e:
-        print(f"❌ Hugging Face 이미지 생성 실패: {e}")
+        print(f"❌ Pollinations 이미지 생성 실패: {e}")
         return None
 
-# ====================== 콘텐츠 생성 ======================
+# ====================== 콘텐츠 및 이미지 프롬프트 생성 ======================
 def generate_content(topic):
     print(f"✍️ 부동산 심층 분석 글 생성 중: {topic}")
 
@@ -216,10 +209,11 @@ def generate_content(topic):
     --- CRITICAL REQUIREMENTS ---
     1. 어투: 신뢰감 있고 전문적이며 정중한 어투 사용
     2. 글의 깊이: 구체적인 수치, 역사적 배경, 장단점, 투자 시뮬레이션 등을 상세하게 작성
-    3. Formatting: ONLY HTML tags 사용 (Markdown 금지)
+    3. Formatting: ONLY HTML tags 사용. 절대 Markdown 코드 블록(```html, ``` 등)을 출력하지 마세요. 순수 텍스트로 바로 시작하세요.
 
     --- Structure your response EXACTLY like this ---
-    [TAGS: 태그1, 태그2, 태그3]
+    [IMAGE_PROMPT: (이 블로그 썸네일에 어울리는 고품질 실사풍 영문 프롬프트를 1~2문장으로 작성. 반드시 영어로만 작성. 예: A highly detailed, photorealistic wide-angle shot of a luxury modern apartment complex in Seoul during sunset, wealth concept, cinematic lighting, 8k)]
+    [TAGS: 태그1, 태그2, 태그3, 태그4]
 
     <article>
     <header><h1>[이모지가 포함된 매력적인 제목]</h1></header>
@@ -255,21 +249,31 @@ def generate_content(topic):
         response = requests.post(GEMINI_TEXT_URL, json=payload, timeout=120)
         response.raise_for_status()
         content = response.json()['candidates'][0]['content']['parts'][0]['text']
-        content = convert_markdown_to_html(content.replace('```html', '').replace('```', ''))
+        
+        # 가끔 생성되는 마크다운 잔재 완벽 제거
+        content = content.replace('```html', '').replace('```', '').strip()
+        content = convert_markdown_to_html(content)
 
+        # 1. 이미지 프롬프트 추출
+        img_match = re.search(r'\[IMAGE_PROMPT:\s*(.*?)\]', content)
+        image_prompt = img_match.group(1).strip() if img_match else f"Modern luxury real estate in Seoul, professional architectural photography, high quality"
+
+        # 2. 태그 추출
         tag_match = re.search(r'\[TAGS:\s*(.*?)\]', content)
         dynamic_tags = [t.strip() for t in tag_match.group(1).split(',')] if tag_match else []
 
+        # 3. 본문 및 제목 추출
         article_start = content.find('<article>')
         body = content[article_start:].strip() if article_start != -1 else content
         title = body[body.find('<h1>') + 4 : body.find('</h1>')].strip() if '<h1>' in body else topic
 
-        print(f"✅ 글 생성 성공: {title[:60]}...")
-        return title, body, dynamic_tags
+        print(f"✅ 글 생성 성공: {title[:50]}...")
+        print(f"🎨 추출된 이미지 프롬프트: {image_prompt}")
+        return title, body, dynamic_tags, image_prompt
 
     except Exception as e:
         print(f"❌ 텍스트 생성 오류: {e}")
-        return None, None, []
+        return None, None, [], None
 
 def post_to_blogger(title, content, dynamic_tags, image_bytes=None):
     if not title or not content:
@@ -313,7 +317,7 @@ def post_to_blogger(title, content, dynamic_tags, image_bytes=None):
 
     try:
         service.posts().insert(blogId=blog_id, body=body, isDraft=False).execute()
-        print(f"✅ 포스팅 성공! 제목: {title[:70]}... | 별점: {rating}")
+        print(f"✅ 포스팅 성공! 제목: {title[:60]}... | 별점: {rating}")
     except Exception as e:
         print(f"❌ Blogger 포스팅 실패: {e}")
 
@@ -326,19 +330,19 @@ if __name__ == "__main__":
     topic = get_real_estate_topic()
     print(f"📌 선정된 주제: {topic}\n")
 
-    title, body, dynamic_tags = generate_content(topic)
+    # 1. Gemini로 글, 태그, 영문 이미지 프롬프트 한 번에 생성
+    title, body, dynamic_tags, image_prompt = generate_content(topic)
 
     if title and body:
-        # Hugging Face로 이미지 생성
+        # 2. 추출된 영문 프롬프트로 Pollinations 이미지 생성
         image_bytes = None
-        if HF_TOKEN:
-            # 주제에 맞는 이미지 프롬프트 생성
-            image_prompt = f"Modern real estate investment blog thumbnail for topic: {topic}. Luxury Seoul apartments, wealth concept, golden hour, professional and sophisticated"
-            image_bytes = generate_image_hf(image_prompt)
+        if image_prompt:
+            image_bytes = generate_image_pollinations(image_prompt)
 
+        # 3. 블로거에 포스팅
         post_to_blogger(title, body, dynamic_tags, image_bytes)
     else:
-        print("❌ 콘텐츠 생성에 실패했습니다.")
+        print("❌ 콘텐츠 생성에 실패하여 포스팅을 취소합니다.")
 
     print(f"\n{'='*70}")
     print(f"🏁 자동 포스팅 종료: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
