@@ -2,6 +2,8 @@ import os
 import requests
 import random
 import re
+import base64
+import time
 from datetime import datetime
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -14,7 +16,11 @@ except ImportError:
     pass
 
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+HF_TOKEN = os.environ.get("HF_TOKEN")  # Hugging Face 토큰 (필수)
+
 GEMINI_TEXT_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+HF_IMAGE_URL = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
+
 
 # ====================== '부의 지름길' 부동산 핵심 키워드 100선 ======================
 FALLBACK_TOPICS = [
@@ -167,6 +173,37 @@ def get_real_estate_topic():
             return topic
     return "2026년 하반기 부동산 시장 핵심 전망과 투자 전략"
 
+# ====================== Hugging Face 이미지 생성 ======================
+def generate_image_hf(prompt):
+    """Hugging Face Flux.1-schnell 모델로 이미지 생성"""
+    print(f"🎨 Hugging Face Flux 이미지 생성 시작...")
+
+    headers = {
+        "Authorization": f"Bearer {HF_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "inputs": prompt,
+        "parameters": {"num_inference_steps": 20}
+    }
+
+    try:
+        response = requests.post(HF_IMAGE_URL, headers=headers, json=payload, timeout=60)
+        
+        if response.status_code == 503:  # 모델 로딩 중
+            print("   ⏳ 모델 로딩 중... 10초 대기 후 재시도")
+            time.sleep(10)
+            response = requests.post(HF_IMAGE_URL, headers=headers, json=payload, timeout=60)
+
+        response.raise_for_status()
+        image_bytes = response.content
+        print(f"✅ 이미지 생성 성공 (크기: {len(image_bytes)//1024}KB)")
+        return image_bytes
+
+    except Exception as e:
+        print(f"❌ Hugging Face 이미지 생성 실패: {e}")
+        return None
 
 # ====================== 콘텐츠 생성 ======================
 def generate_content(topic):
@@ -220,7 +257,6 @@ def generate_content(topic):
         content = response.json()['candidates'][0]['content']['parts'][0]['text']
         content = convert_markdown_to_html(content.replace('```html', '').replace('```', ''))
 
-        # 태그 추출
         tag_match = re.search(r'\[TAGS:\s*(.*?)\]', content)
         dynamic_tags = [t.strip() for t in tag_match.group(1).split(',')] if tag_match else []
 
@@ -235,16 +271,23 @@ def generate_content(topic):
         print(f"❌ 텍스트 생성 오류: {e}")
         return None, None, []
 
-def post_to_blogger(title, content, dynamic_tags):
+def post_to_blogger(title, content, dynamic_tags, image_bytes=None):
     if not title or not content:
         return
 
     service = get_blogger_service()
     blog_id = os.environ["BLOGGER_BLOG_ID"]
-    
+
     labels = ["부동산투자", "부의지름길", "재테크"] + dynamic_tags
     labels = list(dict.fromkeys(labels))[:6]
     rating = round(random.uniform(4.7, 4.9), 1)
+
+    # 이미지 처리
+    if image_bytes:
+        b64 = base64.b64encode(image_bytes).decode('utf-8')
+        img_tag = f'<img src="data:image/jpeg;base64,{b64}" alt="{title}" style="max-width: 100%; height: auto; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.12); margin-bottom: 30px;"/>'
+    else:
+        img_tag = ''
 
     styled_content = f"""
     <style>
@@ -258,6 +301,7 @@ def post_to_blogger(title, content, dynamic_tags):
     </style>
 
     <div class="wealth-content">
+      {img_tag}
       {content}
       <div class="vibe-rating">
         ⭐ {rating} / 5.0
@@ -285,7 +329,14 @@ if __name__ == "__main__":
     title, body, dynamic_tags = generate_content(topic)
 
     if title and body:
-        post_to_blogger(title, body, dynamic_tags)
+        # Hugging Face로 이미지 생성
+        image_bytes = None
+        if HF_TOKEN:
+            # 주제에 맞는 이미지 프롬프트 생성
+            image_prompt = f"Modern real estate investment blog thumbnail for topic: {topic}. Luxury Seoul apartments, wealth concept, golden hour, professional and sophisticated"
+            image_bytes = generate_image_hf(image_prompt)
+
+        post_to_blogger(title, body, dynamic_tags, image_bytes)
     else:
         print("❌ 콘텐츠 생성에 실패했습니다.")
 
