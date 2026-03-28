@@ -173,7 +173,7 @@ def get_real_estate_topic():
             return topic
     return "2026년 하반기 부동산 시장 핵심 전망과 투자 전략"
 
-# ====================== Hugging Face 이미지 생성 (재시도 로직 강화) ======================
+# ====================== Hugging Face 이미지 생성 (최신 API 주소 반영) ======================
 def generate_image_hf(prompt):
     """Hugging Face API를 사용하되, 로딩(503) 에러와 타임아웃을 방어하는 강력한 재시도 로직 적용"""
     print(f"🎨 Hugging Face 이미지 생성 시작...")
@@ -185,10 +185,10 @@ def generate_image_hf(prompt):
     headers = {"Authorization": f"Bearer {HF_TOKEN}"}
     payload = {"inputs": prompt}
     
-    # 모델 1순위 (FLUX), 2순위 (SDXL - 빠르고 안정적임)
+    # 허깅페이스 최신 API 라우터 주소로 업데이트됨
     models = [
-        "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell",
-        "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
+        "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
+        "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0"
     ]
     
     for model_url in models:
