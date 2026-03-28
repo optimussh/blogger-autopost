@@ -4,7 +4,6 @@ import random
 import re
 import base64
 import time
-import urllib.parse
 from datetime import datetime
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -18,6 +17,8 @@ except ImportError:
 
 # 환경 변수 설정
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+HF_TOKEN = os.environ.get("HF_TOKEN")  # Hugging Face 토큰 (필수)
+
 GEMINI_TEXT_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
 
 
@@ -132,7 +133,6 @@ FALLBACK_TOPICS = [
     "부동산 하락기에도 살아남는 '똘똘한 한 채' 선별 기준"
 ]
 
-
 def convert_markdown_to_html(text):
     text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
     text = re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
@@ -173,32 +173,64 @@ def get_real_estate_topic():
             return topic
     return "2026년 하반기 부동산 시장 핵심 전망과 투자 전략"
 
-# ====================== Pollinations.ai 무료 이미지 생성 ======================
-def generate_image_pollinations(prompt):
-    """Pollinations.ai를 활용한 빠르고 안정적인 무료 이미지 생성"""
-    print(f"🎨 Pollinations 이미지 생성 시작...")
+# ====================== Hugging Face 이미지 생성 (재시도 로직 강화) ======================
+def generate_image_hf(prompt):
+    """Hugging Face API를 사용하되, 로딩(503) 에러와 타임아웃을 방어하는 강력한 재시도 로직 적용"""
+    print(f"🎨 Hugging Face 이미지 생성 시작...")
     
-    # URL에 안전하게 들어가도록 프롬프트 인코딩
-    encoded_prompt = urllib.parse.quote(prompt)
-    
-    # 캐싱 방지 및 다양한 이미지를 위한 랜덤 시드
-    seed = random.randint(1, 100000)
-    # 1024x576 (16:9 썸네일 비율), 워터마크 제거
-    url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=576&nologo=true&seed={seed}"
-    
-    try:
-        response = requests.get(url, timeout=60)
-        response.raise_for_status()
-        
-        image_bytes = response.content
-        print(f"✅ 이미지 생성 성공 (크기: {len(image_bytes)//1024}KB)")
-        return image_bytes
-        
-    except Exception as e:
-        print(f"❌ Pollinations 이미지 생성 실패: {e}")
+    if not HF_TOKEN:
+        print("❌ HF_TOKEN이 없습니다. 환경변수(.env 또는 Github Secrets)를 확인해주세요.")
         return None
 
-# ====================== 콘텐츠 및 이미지 프롬프트 생성 ======================
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+    payload = {"inputs": prompt}
+    
+    # 모델 1순위 (FLUX), 2순위 (SDXL - 빠르고 안정적임)
+    models = [
+        "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell",
+        "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
+    ]
+    
+    for model_url in models:
+        model_name = model_url.split('/')[-1]
+        print(f"📍 시도 중인 모델: {model_name}")
+        max_retries = 6 # 최대 6번 재시도 
+        
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(model_url, headers=headers, json=payload, timeout=40)
+                
+                if response.status_code == 200:
+                    image_bytes = response.content
+                    print(f"✅ 이미지 생성 성공! (크기: {len(image_bytes)//1024}KB)")
+                    return image_bytes
+                    
+                elif response.status_code == 503:
+                    # 모델이 서버 메모리에 로드되는 중 (Cold Start)
+                    try:
+                        estimated_time = response.json().get('estimated_time', 10)
+                    except:
+                        estimated_time = 10
+                    wait_time = min(estimated_time, 15) # 너무 길면 최대 15초씩 끊어서 대기
+                    print(f"   ⏳ 모델 로딩 중... {wait_time:.1f}초 대기 후 재시도 ({attempt+1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+                    
+                else:
+                    print(f"   ⚠️ API 에러 ({response.status_code}): {response.text}")
+                    break # 503이 아닌 다른 에러면 이 모델은 포기하고 2순위 모델로 넘어감
+                    
+            except requests.exceptions.Timeout:
+                print(f"   ⏰ 타임아웃 발생. 재시도 중... ({attempt+1}/{max_retries})")
+                time.sleep(5)
+            except Exception as e:
+                print(f"   ❌ 예기치 않은 오류: {e}")
+                break
+                
+    print("❌ 모든 모델에서 이미지 생성에 실패했습니다.")
+    return None
+
+# ====================== 콘텐츠 생성 ======================
 def generate_content(topic):
     print(f"✍️ 부동산 심층 분석 글 생성 중: {topic}")
 
@@ -334,10 +366,10 @@ if __name__ == "__main__":
     title, body, dynamic_tags, image_prompt = generate_content(topic)
 
     if title and body:
-        # 2. 추출된 영문 프롬프트로 Pollinations 이미지 생성
+        # 2. 추출된 영문 프롬프트로 Hugging Face 이미지 생성
         image_bytes = None
         if image_prompt:
-            image_bytes = generate_image_pollinations(image_prompt)
+            image_bytes = generate_image_hf(image_prompt)
 
         # 3. 블로거에 포스팅
         post_to_blogger(title, body, dynamic_tags, image_bytes)
