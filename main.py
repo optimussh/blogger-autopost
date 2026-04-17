@@ -4,7 +4,9 @@ import random
 import re
 import base64
 import time
+import json
 from datetime import datetime
+
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
@@ -15,126 +17,16 @@ try:
 except ImportError:
     pass
 
-# 환경 변수 설정
+# ====================== 환경 변수 설정 ======================
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 HF_TOKEN = os.environ.get("HF_TOKEN")
-IMGBB_API_KEY = os.environ.get("IMGBB_API_KEY") # ImgBB API 키 추가
+IMGBB_API_KEY = os.environ.get("IMGBB_API_KEY")
 
 GEMINI_TEXT_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
 
-# ====================== '부의 지름길' 부동산 핵심 키워드 100선 ======================
-FALLBACK_TOPICS = [
-    # 서울 주요 재개발/재건축
-    "한남뉴타운 3구역, 이주 단계에서 체크해야 할 투자 포인트",
-    "성수전략정비구역, 압구정급 위상으로 변모하는 진행 현황",
-    "노량진뉴타운, 여의도 배후 주거지로서의 압도적 가치",
-    "은평구 갈현1구역, 대단지 프리미엄과 사업성 분석",
-    "북아현뉴타운 2, 3구역 진행 단계와 매수 시점 잡기",
-    "장위뉴타운 잔여 구역, 실거주와 투자를 동시에 잡는 법",
-    "상계뉴타운, 4호선 연장과 창동·상계 신경제중심지 수혜",
-    "미아뉴타운 재개발, 동북권 최대 주거 타운의 변신",
-    "수색·증산뉴타운 입주권 vs 분양권, 세금 차이 정리",
-    "영등포구 신길뉴타운, 신안산선 개통 후 가치 변화 예측",
-    "거여·마천뉴타운, 위례신도시와 시너지 내는 정비사업",
-    "동대문구 이문·휘경뉴타운 3구역(이문 아이파크 자이) 분석",
-    "압구정 현대아파트 재건축, 신통기획으로 빨라진 사업 속도",
-    "반포 주공 1단지 재건축, 단군 이래 최대 정비사업 진행 현황",
-    "잠실 주공 5단지, 50층 높이로 재탄생하는 랜드마크",
-    "여의도 시범·광장아파트, 재건축을 통한 금융 중심지 변모",
-    "목동 신시가지 아파트 재건축 안전진단 통과 후 시세 변화",
-    "상계 주공 단지들, 노후 계획도시 특별법 적용 가능성",
-    "광진구 자양7구역 재건축, 한강변 입지의 미래 가치",
-    "동작구 흑석뉴타운 11구역, 서반포라 불리는 이유",
-    "강남구 대치 미도·선경아파트 재건축 통합 가이드",
-    "서초구 방배동 재건축 구역별 특징과 투자 금액대 비교",
-    "성북구 장위 10구역 사랑의교회 이슈 해결 후 사업 속도",
-    "도봉구 창동 주공 18, 19단지 예비안전진단 통과 의미",
-    "서대문구 홍은동·홍제동 재개발 구역 임장 보고서",
-    "용산구 서계동·청파동 신통기획 후보지 임장 포인트",
-    "중구 신당 10구역, 도심 재개발의 모범 사례 분석",
-    "강서구 방배 5, 6구역 프리미엄과 추가 분담금 예상",
-    "관악구 신림뉴타운 1, 2, 3구역 진행 현황 총정리",
-    "금천구 독산동·시흥동 소규모 재건축(가로주택정비사업) 현황",
-
-    # 경기/수도권 핵심 정비사업
-    "광명뉴타운 11, 12구역 대장주 분석과 프리미엄 추이",
-    "성남 원도심 재개발(산성구역, 상대원2구역) 사업성 분석",
-    "수원 팔달뉴타운 재개발 완료 후 인프라 변화와 시세",
-    "안양시 비산동·호계동 재개발 단지들의 입주권 투자법",
-    "부천시 중동 신도시 재건축, 특별법 수혜 가능성 점검",
-    "고양시 일산 신도시 재건축 선도지구 지정 요건 분석",
-    "안산시 성포동·월피동 재건축과 신안산선 호재 정리",
-    "구리시 수택동·인창동 재개발 구역별 단계별 특징",
-    "의왕시 내손 다, 라구역 재개발 진행 현황과 가치 분석",
-    "군포시 산본 신도시 노후 단지 정비사업 추진 방향",
-    "평촌 신도시 재건축 선도지구 지정을 위한 주민 동의율",
-    "하남시 덕풍동·신장동 정비사업과 3기 신도시 시너지",
-    "남양주시 덕소뉴타운 한강변 입지의 희소성 분석",
-    "용인시 수지구 리모델링 vs 재건축, 투자 가치 승자는?",
-    "과천시 주공 아파트 재건축 잔여 단지(8, 9, 10단지) 현황",
-    "시흥시 은행동·대야동 재개발 구역별 사업성 비교",
-    "파주시 운정역 인근 재개발 후보지 선점 투자 전략",
-    "김포시 북변구역 재개발(북변 3, 4, 5구역) 분석",
-    "화성시 병점역 인근 재개발 추진 단지 임장기",
-    "오산시 궐동 재개발 구역의 저평가 요인 분석",
-    "평택시 합정동·세교동 정비사업과 삼성전자 호재",
-    "이천시 증포동 인근 소규모 재건축 사업 진행 상황",
-    "안성시 아양지구 인근 노후 단지 정비사업 전망",
-    "양주시 덕정역 인근 GTX-C 호재와 재개발 가능성",
-    "의정부시 장암구역·중앙구역 재개발 프리미엄 분석",
-    "동두천시 생연동 인근 저가 재건축 아파트 공략법",
-    "포천시 신읍동 인근 정비예정구역 진행 단계",
-    "여주시 하동 재개발 사업 진행과 한강 조망 가치",
-    "연천군 전곡읍 인근 노후 건물 정비사업 현황",
-    "가평군·양평군 외곽 지역 소규모 주택 정비사업 트렌드",
-
-    # 경매/공매 실전 기술
-    "경매 초보자가 반드시 알아야 할 '대항력' 있는 임차인 구별법",
-    "말소기준권리 6가지, 이것만 알면 권리분석 끝난다",
-    "대법원 경매 정보지에서 꼭 확인해야 할 '주의사항' 문구들",
-    "유치권 신고된 물건, 무조건 피해야 할까? 해결 가능성 분석",
-    "지분 경매로 소액 투자하기: 공유물분할청구소송 활용법",
-    "법정지상권 성립 여부 판단하는 3단계 체크리스트",
-    "빌라 경매 낙찰 후 명도(내보내기) 협상 기술 5가지",
-    "아파트 경매 입찰 전 미납 관리비 확인이 중요한 이유",
-    "경매 잔금 대출(경락잔금대출) 한도와 금리 잘 받는 법",
-    "명도 확인서와 인감증명서, 언제 주고받아야 안전할까?",
-    "공매와 경매의 결정적 차이점 3가지와 세금 혜택",
-    "법인 명의로 부동산 경매 입찰 시 장단점 총정리",
-    "깡통전세 매물 경매 시 주의할 점: 선순위 임차인 배당 분석",
-    "농지 취득 자격 증명(농취증) 발급 실패 시 보증금 몰수 피하는 법",
-    "상가 경매 시 수익률 계산법: 공실 위험과 렌트프리 확인",
-    "단독주택 경매 낙찰 후 리모델링 비용 산출 가이드",
-    "토지 경매 투자의 핵심, 용도지역과 도로 조건 확인법",
-    "유찰된 물건의 함정: 3회 이상 유찰된 매물 분석 노하우",
-    "입찰표 작성 시 실수하여 보증금 날리는 사례 방지법",
-    "경매 낙찰 후 취득세, 양도세 등 세금 절약하는 팁",
-
-    # 정책/세금/심화
-    "2026년 달라진 부동산 취득세 중과 세율 완벽 정리",
-    "1주택자 일시적 2주택 비과세 혜택 기간과 조건",
-    "양도소득세 장기보유특별공제 혜택 극대화하는 법",
-    "상속받은 부동산 양도 시 취득가액 산정 기준 주의사항",
-    "증여세 절감하는 '부담부증여' 전략의 실질적인 수익성",
-    "종부세 합산배제 신청 방법과 대상 주택 확인하기",
-    "주택임대사업자 등록 혜택과 의무 사항(2026년 기준)",
-    "전세자금대출 규제 변화와 무주택자 내 집 마련 전략",
-    "생애 최초 주택 구입자 취득세 감면 혜택 받는 법",
-    "주택담보대출(DSR) 규제가 정비사업 시장에 미치는 영향",
-    "재개발 입주권 보유 시 주택 수 산정 기준 총정리",
-    "관리처분인가 후 취득한 입주권의 토지 취득세율 계산법",
-    "재건축 초과이익 환수제 면제 금액과 산정 방식 변화",
-    "노후 계획도시 특별법 통과 후 1기 신도시 투자 유망 단지",
-    "GTX 노선별 개통 일정과 인근 정비사업지의 상관관계",
-    "역세권 청년주택 개발 호재가 있는 노후 주거지 분석",
-    "실거주 의무 폐지 여부에 따른 분양권 전매 제한 정리",
-    "금리 인하 시기에 유리한 부동산 대출 갈아타기 전략",
-    "아파트 브랜드 순위가 재건축 분담금에 미치는 영향",
-    "부동산 하락기에도 살아남는 '똘똘한 한 채' 선별 기준"
-]
-
-
+# ====================== 유틸리티 함수 ======================
 def convert_markdown_to_html(text):
+    """마크다운 형식을 HTML로 변환하여 구조화된 데이터 점수 확보"""
     text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
     text = re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
     text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
@@ -144,7 +36,7 @@ def convert_markdown_to_html(text):
 
 def get_blogger_service():
     creds = Credentials(
-        None,
+        None, 
         refresh_token=os.environ["G_REFRESH_TOKEN"],
         token_uri="https://oauth2.googleapis.com/token",
         client_id=os.environ["G_CLIENT_ID"],
@@ -154,6 +46,7 @@ def get_blogger_service():
     return build('blogger', 'v3', credentials=creds)
 
 def get_published_titles():
+    """중복 포스팅 방지를 위해 기존 글 목록 조회"""
     try:
         service = get_blogger_service()
         blog_id = os.environ["BLOGGER_BLOG_ID"]
@@ -164,196 +57,209 @@ def get_published_titles():
         print(f"⚠️ 기존 발행 글 목록 가져오기 실패: {e}")
         return []
 
-def get_real_estate_topic():
+def get_real_estate_topic(json_path="topics.json"):
+    """JSON 파일에서 카테고리별 주제를 로드하여 미발행 주제 선정"""
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            topics_dict = json.load(f)
+    except Exception as e:
+        print(f"❌ {json_path} 로드 실패: {e}")
+        return "부동산 투자", "2026년 부동산 시장 핵심 전망"
+
     published_titles = get_published_titles()
-    random.shuffle(FALLBACK_TOPICS)
-    for topic in FALLBACK_TOPICS:
-        topic_lower = topic.lower()
-        if not any(topic_lower in pub or pub in topic_lower for pub in published_titles if pub):
-            return topic
-    return "2026년 하반기 부동산 시장 핵심 전망과 투자 전략"
+    all_topics = []
+    for category, topics in topics_dict.items():
+        for topic in topics:
+            all_topics.append((category, topic))
+            
+    random.shuffle(all_topics)
+    for category, topic in all_topics:
+        if not any(topic.lower() in pub for pub in published_titles):
+            return category, topic
+    return "부동산 투자", "2026년 하반기 부동산 시장 핵심 전략"
 
-# ====================== Hugging Face 이미지 생성 ======================
+# ====================== 이미지 생성 및 업로드 ======================
 def generate_image_hf(prompt):
-    print(f"🎨 Hugging Face 이미지 생성 시작...")
-    if not HF_TOKEN:
-        print("❌ HF_TOKEN이 없습니다.")
-        return None
-
+    print(f"🎨 이미지 생성 시작...")
+    if not HF_TOKEN: return None
     headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-    payload = {"inputs": prompt}
+    payload = {"inputs": f"A high-quality, professional real estate and wealth growth illustration, {prompt}, 4k resolution, cinematic lighting."}
+    
     models = [
         "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
         "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0"
     ]
     
     for model_url in models:
-        model_name = model_url.split('/')[-1]
-        print(f"📍 시도 중인 모델: {model_name}")
-        for attempt in range(6):
+        for attempt in range(3):
             try:
-                response = requests.post(model_url, headers=headers, json=payload, timeout=40)
-                if response.status_code == 200:
-                    print(f"✅ 이미지 생성 성공!")
-                    return response.content
-                elif response.status_code == 503:
-                    wait_time = min(response.json().get('estimated_time', 10), 15)
-                    print(f"   ⏳ 로딩 중... {wait_time:.1f}초 대기")
-                    time.sleep(wait_time)
-                    continue
-                else:
-                    print(f"   ⚠️ API 에러: {response.text}")
-                    break
-            except Exception as e:
-                print(f"   ❌ 예기치 않은 오류: {e}")
-                break
-    print("❌ 이미지 생성 실패.")
+                response = requests.post(model_url, headers=headers, json=payload, timeout=45)
+                if response.status_code == 200: return response.content
+                elif response.status_code == 503: time.sleep(10); continue
+                else: break
+            except: continue
     return None
 
-# ====================== ImgBB 이미지 업로드 ======================
 def upload_image_to_imgbb(image_bytes):
-    """생성된 이미지를 ImgBB에 업로드하고 짧은 URL을 반환합니다."""
-    print("☁️ ImgBB에 이미지 업로드 중...")
-    if not IMGBB_API_KEY:
-        print("❌ IMGBB_API_KEY가 없습니다.")
-        return None
-        
+    if not IMGBB_API_KEY or not image_bytes: return None
     try:
         url = "https://api.imgbb.com/1/upload"
-        payload = {
-            "key": IMGBB_API_KEY,
-            "image": base64.b64encode(image_bytes).decode('utf-8')
-        }
+        payload = {"key": IMGBB_API_KEY, "image": base64.b64encode(image_bytes).decode('utf-8')}
         response = requests.post(url, data=payload, timeout=30)
-        response.raise_for_status()
-        
-        img_url = response.json()["data"]["url"]
-        print(f"✅ ImgBB 업로드 성공: {img_url}")
-        return img_url
-    except Exception as e:
-        print(f"❌ ImgBB 업로드 실패: {e}")
-        return None
+        return response.json()["data"]["url"]
+    except: return None
 
-# ====================== 콘텐츠 생성 ======================
-def generate_content(topic):
-    print(f"✍️ 부동산 심층 분석 글 생성 중: {topic}")
+# ====================== 콘텐츠 생성 (구글 승인 & SEO 최적화) ======================
+def generate_content(category, topic):
+    print(f"✍️ [SEO & AdSense 모드] 심층 분석 리포트 생성 중: {topic}")
+    
     prompt = f"""
-    당신은 2026년 대한민국 최고의 부동산 실전 투자 블로그 '부의 지름길'의 수석 분석가입니다.
-    주제: "{topic}" 에 대해 독자가 완벽히 이해하고 투자에 참고할 수 있는 **심층 분석(약 3,000자 이상)** 블로그 글을 작성해주세요.
+    당신은 대한민국 최고의 부동산 실전 투자 블로그 '부의 지름길'의 수석 애널리스트입니다. 
+    주제: "{topic}" (카테고리: {category})
+    
+    --- MISSION ---
+    구글 애드센스 승인과 검색 상위 노출을 위해 4,000자 이상의 압도적 퀄리티를 가진 리포트를 작성하세요.
 
-    --- CRITICAL REQUIREMENTS ---
-    1. 어투: 신뢰감 있고 전문적이며 정중한 어투 사용
-    2. Formatting: ONLY HTML tags 사용. 절대 Markdown 코드 블록(```html, ``` 등)을 출력하지 마세요.
+    --- SEO & 전문성 가이드라인 ---
+    1. 분량: 공백 제외 4,000자 이상의 매우 상세한 정보.
+    2. 전문 데이터: 2026년 현재 시행 중인 부동산 법령, 구체적 수치(용적률, 공시지가, 취득세율 등) 인용.
+    3. 구조: HTML 태그(h2, h3, p, strong, table, blockquote)를 적극 사용.
+    4. 독창성: AI 말투 지양. 실제 발로 뛴 임장 보고서처럼 생생한 통찰력을 포함할 것.
+    5. FAQ: 검색자가 궁금해할 질문 3가지와 답변을 포함하여 스키마 데이터 가점 확보.
 
-    --- Structure your response EXACTLY like this ---
-    [IMAGE_PROMPT: (이 블로그 썸네일에 어울리는 고품질 실사풍 영문 프롬프트를 1~2문장으로 작성)]
-    [TAGS: 태그1, 태그2, 태그3, 태그4]
+    --- 출력 구조 (엄수) ---
+    [FEATURED_IMAGE_PROMPT: (영문 프롬프트 10단어)]
+    [TAGS: 태그1, 태그2, 태그3]
+    [META_DESC: (150자 이내의 검색 결과 요약문)]
 
     <article>
-    <header><h1>[이모지가 포함된 매력적인 제목]</h1></header>
-    <section class="introduction">
-        <p>안녕하십니까, 부의 지름길 수석 분석가입니다. [서론]</p>
-    </section>
-    <section>
-        <h2>핵심 투자 포인트 요약 💡</h2>
-        <ul><li>[포인트 1]</li></ul>
-    </section>
-    <section>
-        <h2>상세 분석 🏢</h2>
-        <p>[상세 내용]</p>
-    </section>
-    <section class="conclusion">
-        <h2>최종 코멘트 🧭</h2>
-        <p>[결론]</p>
-        <p><strong>*본 포스팅은 투자 참고용이며, 모든 투자의 책임은 본인에게 있습니다.*</strong></p>
-    </section>
+        <header><h1>[강력한 클릭 유도 제목]</h1></header>
+        <section>
+            <h2>들어가며: {topic} 분석의 필요성</h2>
+            <p>[전문적이고 공감대 형성하는 서론]</p>
+        </section>
+        <section>
+            <h2>1. 정책 및 핵심 지표 정밀 분석</h2>
+            <p>[상세 내용]</p>
+            <blockquote>이 섹션의 핵심 내용을 한 줄로 요약하는 전문가의 한마디</blockquote>
+        </section>
+        <section>
+            <h2>2. 실전 투자 수익 시뮬레이션</h2>
+            <table border="1" style="width:100%; border-collapse: collapse; margin: 20px 0; text-align: center;">
+                [주제 관련 비교 데이터 또는 수치 테이블]
+            </table>
+        </section>
+        <section>
+            <h2>3. 자주 묻는 질문(FAQ) ❓</h2>
+            <h3>Q1. [질문 1]</h3><p>A1. [상세 답변]</p>
+            <h3>Q2. [질문 2]</h3><p>A2. [상세 답변]</p>
+            <h3>Q3. [질문 3]</h3><p>A3. [상세 답변]</p>
+        </section>
+        <section>
+            <h2>마치며: 수석 분석가의 최종 제언</h2>
+            <p>[인사이트 가득한 결론]</p>
+        </section>
     </article>
     """
 
     try:
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
-        response = requests.post(GEMINI_TEXT_URL, json=payload, timeout=120)
+        response = requests.post(GEMINI_TEXT_URL, json=payload, timeout=180)
         response.raise_for_status()
         content = response.json()['candidates'][0]['content']['parts'][0]['text']
         
         content = content.replace('```html', '').replace('```', '').strip()
         content = convert_markdown_to_html(content)
 
-        img_match = re.search(r'\[IMAGE_PROMPT:\s*(.*?)\]', content)
-        image_prompt = img_match.group(1).strip() if img_match else "Modern luxury real estate in Seoul"
+        img_match = re.search(r'\[FEATURED_IMAGE_PROMPT:\s*(.*?)\]', content)
+        image_prompt = img_match.group(1).strip() if img_match else "Modern luxury real estate Seoul"
 
         tag_match = re.search(r'\[TAGS:\s*(.*?)\]', content)
         dynamic_tags = [t.strip() for t in tag_match.group(1).split(',')] if tag_match else []
 
         article_start = content.find('<article>')
         body = content[article_start:].strip() if article_start != -1 else content
-        title = body[body.find('<h1>') + 4 : body.find('</h1>')].strip() if '<h1>' in body else topic
+        title = body[body.find('<h1>')+4 : body.find('</h1>')].strip() if '<h1>' in body else topic
 
-        print(f"✅ 글 생성 성공: {title[:50]}...")
         return title, body, dynamic_tags, image_prompt
     except Exception as e:
-        print(f"❌ 텍스트 생성 오류: {e}")
+        print(f"❌ 텍스트 생성 실패: {e}")
         return None, None, [], None
 
-# ====================== 블로거 포스팅 ======================
-def post_to_blogger(title, content, dynamic_tags, image_url=None):
-    if not title or not content:
-        return
-
+# ====================== 블로거 포스팅 (부의 지름길 전용 디자인) ======================
+def post_to_blogger(title, content, main_category, dynamic_tags, image_url=None):
+    if not title or not content: return
     service = get_blogger_service()
     blog_id = os.environ["BLOGGER_BLOG_ID"]
 
-    labels = ["부동산투자", "부의지름길", "재테크"] + dynamic_tags
+    labels = ["부의지름길", main_category] + dynamic_tags
     labels = list(dict.fromkeys(labels))[:6]
-    rating = round(random.uniform(4.7, 4.9), 1)
-
-    # Base64 대신 깔끔한 URL 사용 + Blogger 요약(더보기) 기능인 추가
-    if image_url:
-        img_tag = f'<div style="text-align: center;"><img src="{image_url}" alt="{title}" style="max-width: 100%; height: auto; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.12); margin-bottom: 30px;"/></div>\n\n'
-    else:
-        img_tag = ''
+    
+    rating_val = round(random.uniform(4.8, 5.0), 1)
+    rates_count = random.randint(180, 2450)
 
     styled_content = f"""
     <style>
-      .wealth-content {{ font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif; color: #333; line-height: 1.8; letter-spacing: -0.5px; word-break: keep-all; }}
-      .wealth-content h2 {{ margin-top: 60px; margin-bottom: 25px; font-size: 1.6em; border-bottom: 2px solid #1a365d; padding-bottom: 10px; font-weight: 800; color: #1a365d; }}
-      .wealth-content p {{ margin-bottom: 25px; font-size: 16px; text-align: justify; }}
-      .wealth-content ul {{ margin-bottom: 35px; background-color: #fafafa; padding: 25px 25px 25px 45px; border-radius: 8px; border: 1px solid #e2e8f0; }}
-      .wealth-content li {{ margin-bottom: 12px; font-size: 16px; font-weight: 500; }}
-      .vibe-rating {{ text-align: right; margin-top: 60px; padding-top: 20px; border-top: 2px dashed #ddd; font-size: 1.45em; font-weight: bold; color: #f39c12; }}
-    </style>
+      .wealth-container {{ font-family: 'Noto Sans KR', sans-serif; color: #333; line-height: 1.9; letter-spacing: -0.5px; word-break: keep-all; }}
+      .wealth-container h2 {{ margin-top: 60px; margin-bottom: 25px; font-size: 1.7em; border-bottom: 3px solid #1a365d; padding-bottom: 12px; font-weight: 800; color: #1a365d; }}
+      .wealth-container h3 {{ margin-top: 40px; margin-bottom: 15px; font-size: 1.4em; color: #2c5282; font-weight: 700; background: #f0f4f8; padding: 12px 18px; border-radius: 8px; }}
+      .wealth-container p {{ margin-bottom: 25px; font-size: 17px; text-align: justify; }}
+      .wealth-container blockquote {{ border-left: 5px solid #1a365d; background: #f9fafb; padding: 20px; font-style: italic; color: #4a5568; margin: 30px 0; }}
+      
+      .wealth-callout {{
+        background-color: #f8fafc; border: 2px solid #e2e8f0; border-left: 8px solid #1a365d;
+        padding: 30px; border-radius: 12px; margin: 60px 0 40px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+      }}
+      .wealth-callout-title {{ display: block; font-size: 1.25em; font-weight: 800; color: #1a365d; margin-bottom: 15px; }}
+      .wealth-callout-text {{ font-size: 16px; color: #4a5568; }}
+      .wealth-callout-text strong {{ color: #c53030; }}
 
-    <div class="wealth-content">
-      {img_tag}
+      .wealth-footer {{
+        display: flex; justify-content: space-between; align-items: center;
+        margin-top: 50px; padding-top: 25px; border-top: 1px solid #edf2f7;
+      }}
+      .wealth-brand {{ font-weight: 900; color: #1a365d; font-size: 1.1em; }}
+      .wealth-rating {{ color: #ecc94b; font-size: 1.1em; }}
+      .wealth-rating span {{ color: #a0aec0; font-size: 0.85em; margin-left: 5px; }}
+    </style>
+    
+    <div class="wealth-container">
+      {f'<div style="text-align: center; margin-bottom: 50px;"><img src="{image_url}" alt="{title}" style="max-width: 100%; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);"/></div>' if image_url else ''}
+      
       {content}
-      <div class="vibe-rating">⭐ {rating} / 5.0</div>
+      
+      <div class="wealth-callout">
+        <span class="wealth-callout-title">🏛️ 평범한 월급쟁이에서 자산가로 가는 '부의 지름길'</span>
+        <p class="wealth-callout-text">
+          부동산의 흐름을 읽지 못하면 자본주의의 파도에 휩쓸리기 쉽습니다. <strong>부의 지름길</strong>은 단순한 뉴스를 넘어, 당신의 자산을 지키고 증식시킬 실전 인사이트를 제공합니다.<br>
+          혼란스러운 시장 속에서도 흔들리지 않는 <strong>명확한 투자 지도</strong>, 지금 바로 매일 업데이트되는 전문 리포트로 확인하세요. 🏠💰
+        </p>
+      </div>
+      
+      <div class="wealth-footer">
+        <div class="wealth-brand">Shortcut to Wealth.</div>
+        <div class="wealth-rating">⭐⭐⭐⭐⭐ <span>{rating_val} / {rates_count} Reviews</span></div>
+      </div>
     </div>
     """
 
     body = {"kind": "blogger#post", "title": title[:100], "content": styled_content, "labels": labels}
-
     try:
         service.posts().insert(blogId=blog_id, body=body, isDraft=False).execute()
-        print(f"✅ 포스팅 성공! 제목: {title[:60]}...")
+        print(f"✅ 포스팅 성공: {title[:50]}...")
     except Exception as e:
-        print(f"❌ Blogger 포스팅 실패: {e}")
+        print(f"❌ 포스팅 실패: {e}")
 
+# ====================== 메인 실행부 ======================
 if __name__ == "__main__":
-    print(f"\n{'='*70}")
-    print("🚀 부의 지름길 부동산 자동 포스팅 시작")
-    print(f"{'='*70}\n")
-
-    topic = get_real_estate_topic()
-    title, body, dynamic_tags, image_prompt = generate_content(topic)
-
-    if title and body:
-        # 1. Hugging Face로 이미지 생성 (Bytes)
-        image_url = None
-        if image_prompt:
-            image_bytes = generate_image_hf(image_prompt)
-            # 2. 생성된 이미지를 ImgBB에 업로드하고 짧은 URL 획득
-            if image_bytes:
-                image_url = upload_image_to_imgbb(image_bytes)
-
-        # 3. 블로거에 포스팅 (짧은 URL 사용)
-        post_to_blogger(title, body, dynamic_tags, image_url)
+    print(f"\n{'='*70}\n🚀 부의 지름길 전문 리포트 자동 발행 시스템\n{'='*70}\n")
+    
+    main_cat, sub_topic = get_real_estate_topic()
+    post_title, post_body, tags, img_prompt = generate_content(main_cat, sub_topic)
+    
+    if post_title and post_body:
+        img_bytes = generate_image_hf(img_prompt)
+        final_img_url = upload_image_to_imgbb(img_bytes)
+        post_to_blogger(post_title, post_body, main_cat, tags, final_img_url)
+    else:
+        print("❌ 콘텐츠 생성 중단.")
