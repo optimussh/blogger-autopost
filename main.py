@@ -6,6 +6,7 @@ import base64
 import time
 import json
 from datetime import datetime
+from typing import Optional
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -22,7 +23,82 @@ GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 HF_TOKEN = os.environ.get("HF_TOKEN")
 IMGBB_API_KEY = os.environ.get("IMGBB_API_KEY")
 
-GEMINI_TEXT_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+# 📌 모델 우선순위 (위에서부터 시도)
+GEMINI_MODELS = [
+    "gemini-2.5-flash",           # ✅ 가장 안정적
+    "gemini-2.5-flash-lite",       # ⚡ 더 빠르고 저렴
+    "gemini-3-flash-preview",      # 📮 최신 프리뷰
+]
+
+# 📌 재시도 설정 (지수 백오프 적용)
+RETRY_CONFIG = {
+    "max_attempts": 8,           # 총 8회 시도 (1, 2, 4, 8, 16, 32, 64, 120초 순으로 대기하기 위함)
+    "base_time_seconds": 1,      # 시작 대기 시간 (1초)
+    "max_wait_seconds": 120,     # 최대 대기 시간 (2분 = 120초)
+}
+
+# ====================== 재시도 로직 ======================
+def call_gemini_with_retry(prompt: str) -> Optional[str]:
+    """
+    Gemini API를 지수 백오프(Exponential Backoff) 재시도 로직과 함께 호출
+    - 모델별 fallback 전략
+    - 에러 발생 시 대기 시간: 1초 → 2초 → 4초 → 8초... (최대 120초)
+    """
+    for model_idx, model_name in enumerate(GEMINI_MODELS):
+        print(f"\n🤖 시도 중: [{model_idx + 1}/{len(GEMINI_MODELS)}] {model_name}")
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+
+        for attempt in range(1, RETRY_CONFIG["max_attempts"] + 1):
+            try:
+                print(f"  📍 시도 {attempt}/{RETRY_CONFIG['max_attempts']}", end="")
+                response = requests.post(url, json=payload, timeout=150)
+
+                # ✅ 성공
+                if response.status_code == 200:
+                    print(" ✅")
+                    return response.json()['candidates'][0]['content']['parts'][0]['text']
+
+                # ❌ 클라이언트 에러 (400, 404, 403 등) - 재시도 안 함, 다음 모델로
+                elif 400 <= response.status_code < 500:
+                    print(f" ❌ ({response.status_code}: {response.reason})")
+                    print(f"     → 모델 지원 불가, 다음 모델 시도...")
+                    break  # 이 모델 포기, 다음 모델로
+
+                # ⚠️ 서버 에러 (500, 503 등) - 지수 백오프 재시도
+                elif response.status_code >= 500:
+                    error_msg = response.json().get('error', {}).get('message', response.reason)
+                    print(f" ⚠️ ({response.status_code}: {error_msg})")
+
+                    if attempt < RETRY_CONFIG["max_attempts"]:
+                        wait_time = min((2 ** (attempt - 1)) * RETRY_CONFIG["base_time_seconds"], RETRY_CONFIG["max_wait_seconds"])
+                        print(f"     → {wait_time}초 후 재시도...")
+                        time.sleep(wait_time)
+                    continue
+
+            except requests.exceptions.Timeout:
+                print(f" ⏱️ (Timeout)")
+                if attempt < RETRY_CONFIG["max_attempts"]:
+                    wait_time = min((2 ** (attempt - 1)) * RETRY_CONFIG["base_time_seconds"], RETRY_CONFIG["max_wait_seconds"])
+                    print(f"     → {wait_time}초 후 재시도...")
+                    time.sleep(wait_time)
+                continue
+
+            except requests.exceptions.RequestException as e:
+                print(f" ❌ (Network Error: {str(e)[:50]})")
+                if attempt < RETRY_CONFIG["max_attempts"]:
+                    wait_time = min((2 ** (attempt - 1)) * RETRY_CONFIG["base_time_seconds"], RETRY_CONFIG["max_wait_seconds"])
+                    print(f"     → {wait_time}초 후 재시도...")
+                    time.sleep(wait_time)
+                continue
+
+        print(f"  ✗ {model_name} 실패\n")
+
+    # 모든 모델 및 재시도 소진
+    print("\n❌ 모든 Gemini 모델 소진. API 상태 확인 필요:")
+    return None
+
 
 # ====================== 유틸리티 함수 ======================
 def convert_markdown_to_html(text):
@@ -71,7 +147,7 @@ def get_real_estate_topic(json_path="topics.json"):
     for category, topics in topics_dict.items():
         for topic in topics:
             all_topics.append((category, topic))
-            
+
     random.shuffle(all_topics)
     for category, topic in all_topics:
         if not any(topic.lower() in pub for pub in published_titles):
@@ -84,12 +160,12 @@ def generate_image_hf(prompt):
     if not HF_TOKEN: return None
     headers = {"Authorization": f"Bearer {HF_TOKEN}"}
     payload = {"inputs": f"A high-quality, professional real estate and wealth growth illustration, {prompt}, 4k resolution, cinematic lighting."}
-    
+
     models = [
         "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
         "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0"
     ]
-    
+
     for model_url in models:
         for attempt in range(3):
             try:
@@ -112,7 +188,7 @@ def upload_image_to_imgbb(image_bytes):
 # ====================== 콘텐츠 생성 (구글 승인 & SEO 최적화) ======================
 def generate_content(category, topic):
     print(f"✍️ [SEO & AdSense 모드] 심층 분석 리포트 생성 중: {topic}")
-    
+
     prompt = f"""
     당신은 대한민국 최고의 부동산 실전 투자 블로그 '부의 지름길'의 수석 애널리스트입니다. 
     주제: "{topic}" (카테고리: {category})
@@ -162,29 +238,28 @@ def generate_content(category, topic):
     </article>
     """
 
-    try:
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
-        response = requests.post(GEMINI_TEXT_URL, json=payload, timeout=180)
-        response.raise_for_status()
-        content = response.json()['candidates'][0]['content']['parts'][0]['text']
-        
-        content = content.replace('```html', '').replace('```', '').strip()
-        content = convert_markdown_to_html(content)
+    # 🔄 재시도 로직 포함 Gemini 호출
+    content = call_gemini_with_retry(prompt)
 
-        img_match = re.search(r'\[FEATURED_IMAGE_PROMPT:\s*(.*?)\]', content)
-        image_prompt = img_match.group(1).strip() if img_match else "Modern luxury real estate Seoul"
-
-        tag_match = re.search(r'\[TAGS:\s*(.*?)\]', content)
-        dynamic_tags = [t.strip() for t in tag_match.group(1).split(',')] if tag_match else []
-
-        article_start = content.find('<article>')
-        body = content[article_start:].strip() if article_start != -1 else content
-        title = body[body.find('<h1>')+4 : body.find('</h1>')].strip() if '<h1>' in body else topic
-
-        return title, body, dynamic_tags, image_prompt
-    except Exception as e:
-        print(f"❌ 텍스트 생성 실패: {e}")
+    if not content:
+        print("❌ 텍스트 생성 실패: 모든 API 시도 소진")
         return None, None, [], None
+
+    content = content.replace('```html', '').replace('```', '').strip()
+    content = convert_markdown_to_html(content)
+
+    img_match = re.search(r'\[FEATURED_IMAGE_PROMPT:\s*(.*?)\]', content)
+    image_prompt = img_match.group(1).strip() if img_match else "Modern luxury real estate Seoul"
+
+    tag_match = re.search(r'\[TAGS:\s*(.*?)\]', content)
+    dynamic_tags = [t.strip() for t in tag_match.group(1).split(',')] if tag_match else []
+
+    article_start = content.find('<article>')
+    body = content[article_start:].strip() if article_start != -1 else content
+    title = body[body.find('<h1>')+4 : body.find('</h1>')].strip() if '<h1>' in body else topic
+
+    return title, body, dynamic_tags, image_prompt
+
 
 # ====================== 블로거 포스팅 (부의 지름길 전용 디자인) ======================
 def post_to_blogger(title, content, main_category, dynamic_tags, image_url=None):
@@ -194,14 +269,39 @@ def post_to_blogger(title, content, main_category, dynamic_tags, image_url=None)
 
     labels = ["부의지름길", main_category] + dynamic_tags
     labels = list(dict.fromkeys(labels))[:6]
-    
+
     rating_val = round(random.uniform(4.8, 5.0), 1)
     rates_count = random.randint(180, 2450)
 
+    # 리딩 프로그레스 바 요소 추가 및 CSS 업데이트
     styled_content = f"""
+    <div class="reading-progress-container">
+      <div class="reading-progress-bar" id="myProgressBar"></div>
+    </div>
+
     <style>
-      .wealth-container {{ font-family: 'Noto Sans KR', sans-serif; color: #333; line-height: 1.9; letter-spacing: -0.5px; word-break: keep-all; }}
-      .wealth-container h2 {{ margin-top: 60px; margin-bottom: 25px; font-size: 1.7em; border-bottom: 3px solid #1a365d; padding-bottom: 12px; font-weight: 800; color: #1a365d; }}
+      html {{ scroll-behavior: smooth; }}
+
+      /* 스크롤 진행률 바 CSS */
+      .reading-progress-container {{
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 5px;
+        background-color: transparent;
+        z-index: 99999;
+      }}
+      .reading-progress-bar {{
+        height: 100%;
+        width: 0%;
+        background-color: #e53e3e; /* 리딩 진행률 색상 (빨간색 계열) */
+        transition: width 0.1s ease-out;
+      }}
+
+      /* 기존 부의 지름길 컨테이너 스타일 */
+      .wealth-container {{ font-family: 'Noto Sans KR', sans-serif; color: #333; line-height: 1.9; letter-spacing: -0.5px; word-break: keep-all; padding-top: 10px; }}
+      .wealth-container h2 {{ margin-top: 60px; margin-bottom: 25px; font-size: 1.7em; border-bottom: 3px solid #1a365d; padding-bottom: 12px; font-weight: 800; color: #1a365d; scroll-margin-top: 80px; }}
       .wealth-container h3 {{ margin-top: 40px; margin-bottom: 15px; font-size: 1.4em; color: #2c5282; font-weight: 700; background: #f0f4f8; padding: 12px 18px; border-radius: 8px; }}
       .wealth-container p {{ margin-bottom: 25px; font-size: 17px; text-align: justify; }}
       .wealth-container blockquote {{ border-left: 5px solid #1a365d; background: #f9fafb; padding: 20px; font-style: italic; color: #4a5568; margin: 30px 0; }}
@@ -241,22 +341,34 @@ def post_to_blogger(title, content, main_category, dynamic_tags, image_url=None)
         <div class="wealth-rating">⭐⭐⭐⭐⭐ <span>{rating_val} / {rates_count} Reviews</span></div>
       </div>
     </div>
+
+    <script>
+      window.addEventListener('scroll', function() {{
+        var winScroll = document.body.scrollTop || document.documentElement.scrollTop;
+        var height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+        var scrolled = (winScroll / height) * 100;
+        var progressBar = document.getElementById("myProgressBar");
+        if (progressBar) {{
+            progressBar.style.width = scrolled + "%";
+        }}
+      }});
+    </script>
     """
 
     body = {"kind": "blogger#post", "title": title[:100], "content": styled_content, "labels": labels}
     try:
         service.posts().insert(blogId=blog_id, body=body, isDraft=False).execute()
-        print(f"✅ 포스팅 성공: {title[:50]}...")
+        print(f"✅ 포스팅 성공 (리딩 프로그레스 바 적용): {title[:50]}...")
     except Exception as e:
         print(f"❌ 포스팅 실패: {e}")
 
 # ====================== 메인 실행부 ======================
 if __name__ == "__main__":
     print(f"\n{'='*70}\n🚀 부의 지름길 전문 리포트 자동 발행 시스템\n{'='*70}\n")
-    
+
     main_cat, sub_topic = get_real_estate_topic()
     post_title, post_body, tags, img_prompt = generate_content(main_cat, sub_topic)
-    
+
     if post_title and post_body:
         img_bytes = generate_image_hf(img_prompt)
         final_img_url = upload_image_to_imgbb(img_bytes)
