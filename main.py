@@ -156,22 +156,25 @@ def get_real_estate_topic(json_path="topics.json"):
     return "부동산 투자", "2026년 하반기 부동산 시장 핵심 전략"
 
 
-# ====================== 이미지 생성 (무료 API로 교체) ======================
+# ====================== 이미지 생성 (무료 API로 교체 - 랜덤 시드 적용) ======================
 def generate_image_hf(prompt):
     print(f"🎨 이미지 생성 시작 (무료 API - Pollinations 사용)...")
-    
+
     # URL에 맞게 프롬프트 인코딩
     full_prompt = f"A high-quality, professional real estate and wealth growth illustration, {prompt}, 4k resolution, cinematic lighting, no text"
     encoded_prompt = urllib.parse.quote(full_prompt)
-    
-    # 16:9 비율(1024x576)의 이미지 생성 URL
-    url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=576&nologo=true"
-    
+
+    # 🎲 무작위 시드(seed) 값을 생성하여 매번 다른 이미지가 나오도록 강제
+    random_seed = random.randint(1, 9999999)
+
+    # 16:9 비율(1024x576)의 이미지 생성 URL (+ 랜덤 시드 추가)
+    url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=576&nologo=true&seed={random_seed}"
+
     for attempt in range(3):
         print(f"  ➡️ 시도 중 ({attempt+1}/3)...")
         try:
             response = requests.get(url, timeout=45)
-            
+
             if response.status_code == 200: 
                 print("  ✅ 무료 이미지 생성 성공!")
                 return response.content
@@ -181,20 +184,20 @@ def generate_image_hf(prompt):
         except Exception as e: 
             print(f"  ❌ 네트워크 에러: {str(e)}")
             time.sleep(2)
-            
+
     print("❌ 이미지 생성 시도 실패.")
     return None
 
 def upload_image_to_imgbb(image_bytes):
     if not IMGBB_API_KEY or not image_bytes: 
         return None
-        
+
     print("☁️ ImgBB에 이미지 업로드 중...")
     try:
         url = "https://api.imgbb.com/1/upload"
         payload = {"key": IMGBB_API_KEY, "image": base64.b64encode(image_bytes).decode('utf-8')}
         response = requests.post(url, data=payload, timeout=30)
-        
+
         if response.status_code == 200:
             print("✅ ImgBB 업로드 성공!")
             return response.json()["data"]["url"]
