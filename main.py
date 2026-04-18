@@ -154,10 +154,13 @@ def get_real_estate_topic(json_path="topics.json"):
             return category, topic
     return "부동산 투자", "2026년 하반기 부동산 시장 핵심 전략"
 
-# ====================== 이미지 생성 및 업로드 ======================
+# ====================== 이미지 생성 및 업로드 (디버깅 추가 버전) ======================
 def generate_image_hf(prompt):
-    print(f"🎨 이미지 생성 시작...")
-    if not HF_TOKEN: return None
+    print(f"🎨 이미지 생성 시작... (프롬프트 추출됨)")
+    if not HF_TOKEN: 
+        print("❌ 에러: HF_TOKEN이 환경변수에 없습니다.")
+        return None
+        
     headers = {"Authorization": f"Bearer {HF_TOKEN}"}
     payload = {"inputs": f"A high-quality, professional real estate and wealth growth illustration, {prompt}, 4k resolution, cinematic lighting."}
 
@@ -167,23 +170,49 @@ def generate_image_hf(prompt):
     ]
 
     for model_url in models:
+        model_name = model_url.split('/')[-1]
+        print(f"  ➡️ 모델 시도 중: {model_name}")
         for attempt in range(3):
             try:
                 response = requests.post(model_url, headers=headers, json=payload, timeout=45)
-                if response.status_code == 200: return response.content
-                elif response.status_code == 503: time.sleep(10); continue
-                else: break
-            except: continue
+                
+                if response.status_code == 200: 
+                    print("  ✅ 이미지 생성 성공!")
+                    return response.content
+                elif response.status_code == 503: 
+                    print(f"  ⚠️ 모델 로딩 중 (503)... 10초 대기 후 재시도 ({attempt+1}/3)")
+                    time.sleep(10)
+                    continue
+                else: 
+                    # 429(Too Many Requests), 400 등 명시적 에러 발생 시 로그 출력
+                    print(f"  ❌ API 에러 ({response.status_code}): {response.text}")
+                    break 
+            except Exception as e: 
+                print(f"  ❌ 네트워크/예외 에러: {str(e)}")
+                continue
+                
+    print("❌ 모든 이미지 생성 모델 시도 실패.")
     return None
 
 def upload_image_to_imgbb(image_bytes):
-    if not IMGBB_API_KEY or not image_bytes: return None
+    if not IMGBB_API_KEY or not image_bytes: 
+        return None
+        
+    print("☁️ ImgBB에 이미지 업로드 중...")
     try:
         url = "https://api.imgbb.com/1/upload"
         payload = {"key": IMGBB_API_KEY, "image": base64.b64encode(image_bytes).decode('utf-8')}
         response = requests.post(url, data=payload, timeout=30)
-        return response.json()["data"]["url"]
-    except: return None
+        
+        if response.status_code == 200:
+            print("✅ ImgBB 업로드 성공!")
+            return response.json()["data"]["url"]
+        else:
+            print(f"❌ ImgBB 에러 ({response.status_code}): {response.text}")
+            return None
+    except Exception as e: 
+        print(f"❌ ImgBB 업로드 예외 발생: {str(e)}")
+        return None
 
 # ====================== 콘텐츠 생성 (구글 승인 & SEO 최적화) ======================
 def generate_content(category, topic):
