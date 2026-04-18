@@ -5,6 +5,7 @@ import re
 import base64
 import time
 import json
+import urllib.parse
 from datetime import datetime
 from typing import Optional
 
@@ -154,44 +155,34 @@ def get_real_estate_topic(json_path="topics.json"):
             return category, topic
     return "부동산 투자", "2026년 하반기 부동산 시장 핵심 전략"
 
-# ====================== 이미지 생성 및 업로드 (디버깅 추가 버전) ======================
+
+# ====================== 이미지 생성 (무료 API로 교체) ======================
 def generate_image_hf(prompt):
-    print(f"🎨 이미지 생성 시작... (프롬프트 추출됨)")
-    if not HF_TOKEN: 
-        print("❌ 에러: HF_TOKEN이 환경변수에 없습니다.")
-        return None
-        
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-    payload = {"inputs": f"A high-quality, professional real estate and wealth growth illustration, {prompt}, 4k resolution, cinematic lighting."}
-
-    models = [
-        "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
-        "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0"
-    ]
-
-    for model_url in models:
-        model_name = model_url.split('/')[-1]
-        print(f"  ➡️ 모델 시도 중: {model_name}")
-        for attempt in range(3):
-            try:
-                response = requests.post(model_url, headers=headers, json=payload, timeout=45)
-                
-                if response.status_code == 200: 
-                    print("  ✅ 이미지 생성 성공!")
-                    return response.content
-                elif response.status_code == 503: 
-                    print(f"  ⚠️ 모델 로딩 중 (503)... 10초 대기 후 재시도 ({attempt+1}/3)")
-                    time.sleep(10)
-                    continue
-                else: 
-                    # 429(Too Many Requests), 400 등 명시적 에러 발생 시 로그 출력
-                    print(f"  ❌ API 에러 ({response.status_code}): {response.text}")
-                    break 
-            except Exception as e: 
-                print(f"  ❌ 네트워크/예외 에러: {str(e)}")
-                continue
-                
-    print("❌ 모든 이미지 생성 모델 시도 실패.")
+    print(f"🎨 이미지 생성 시작 (무료 API - Pollinations 사용)...")
+    
+    # URL에 맞게 프롬프트 인코딩
+    full_prompt = f"A high-quality, professional real estate and wealth growth illustration, {prompt}, 4k resolution, cinematic lighting, no text"
+    encoded_prompt = urllib.parse.quote(full_prompt)
+    
+    # 16:9 비율(1024x576)의 이미지 생성 URL
+    url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=576&nologo=true"
+    
+    for attempt in range(3):
+        print(f"  ➡️ 시도 중 ({attempt+1}/3)...")
+        try:
+            response = requests.get(url, timeout=45)
+            
+            if response.status_code == 200: 
+                print("  ✅ 무료 이미지 생성 성공!")
+                return response.content
+            else: 
+                print(f"  ❌ API 에러 ({response.status_code})")
+                time.sleep(2)
+        except Exception as e: 
+            print(f"  ❌ 네트워크 에러: {str(e)}")
+            time.sleep(2)
+            
+    print("❌ 이미지 생성 시도 실패.")
     return None
 
 def upload_image_to_imgbb(image_bytes):
@@ -213,6 +204,7 @@ def upload_image_to_imgbb(image_bytes):
     except Exception as e: 
         print(f"❌ ImgBB 업로드 예외 발생: {str(e)}")
         return None
+
 
 # ====================== 콘텐츠 생성 (구글 승인 & SEO 최적화) ======================
 def generate_content(category, topic):
