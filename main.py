@@ -38,6 +38,40 @@ RETRY_CONFIG = {
     "max_wait_seconds": 120,     # 최대 대기 시간 (2분 = 120초)
 }
 
+# 🎨 30가지 다양한 이미지 스타일 프리셋 (구도, 화풍, 컨셉 다변화)
+IMAGE_STYLES = [
+    "Architectural blueprint with glowing glowing lines and a small house model", # 1. 청사진
+    "Cinematic drone shot of a futuristic metropolis at golden hour", # 2. 드론 항공샷
+    "Isometric 3D rendering of a modern residential neighborhood", # 3. 3D 아이소메트릭
+    "Macro photography of stacked gold coins and a miniature house", # 4. 접사 (동전과 집)
+    "Abstract 3D chart showing exponential financial growth with glowing arrows", # 5. 추상적 금융 차트
+    "Minimalist flat vector art illustration of urban real estate", # 6. 미니멀리스트 벡터 아트
+    "High-speed modern train moving through a high-tech city at night", # 7. 고속철도 (GTX 컨셉)
+    "Cozy interior of a luxury apartment with wide windows overlooking the city", # 8. 럭셔리 인테리어
+    "Double exposure of a confident business person and a modern cityscape", # 9. 이중 노출 (사람+도시)
+    "A glowing golden key resting on top of a signed real estate contract", # 10. 계약서와 황금 열쇠
+    "A bustling construction site of a massive skyscraper with cranes at sunrise", # 11. 건설 현장
+    "Photorealistic miniature tilt-shift diorama of a city neighborhood", # 12. 미니어처 디오라마
+    "Low poly 3D art of a commercial real estate building", # 13. 로우폴리 3D 아트
+    "Beautiful watercolor illustration of a serene suburban house", # 14. 수채화 일러스트
+    "Close up of a golden auction gavel on a wooden desk", # 15. 경매 망치 (경매 컨셉)
+    "A conceptual image of a house floating on a cloud of glowing digital data", # 16. 디지털 데이터와 집
+    "A vibrant green eco-friendly park surrounded by modern skyscrapers", # 17. 친환경 공원과 빌딩
+    "Vintage retro style poster design of a bustling city center", # 18. 빈티지 포스터 스타일
+    "A transparent piggy bank filled with tiny houses instead of coins", # 19. 돼지저금통과 집
+    "Abstract geometric shapes forming a modern skyline", # 20. 기하학적 스카이라인
+    "A glowing futuristic subway map network overlaying a dark city map", # 21. 지하철 노선도 오버레이
+    "Macro shot of an elegant fountain pen signing a property deed", # 22. 만년필과 부동산 문서
+    "A beautifully landscaped modern garden in front of a luxury mansion", # 23. 고급 저택 정원
+    "Drone top-down view of a neatly planned suburban neighborhood grid", # 24. 수직 하강 드론뷰
+    "A glowing jigsaw puzzle piece completing a city skyline", # 25. 퍼즐 조각과 도시
+    "A stylized 3D rendered bank safe box open with a glowing house inside", # 26. 금고 안의 집
+    "Pop art style illustration of colorful real estate buildings", # 27. 팝아트 스타일 빌딩
+    "A serene sunset over a rapidly developing smart city waterfront", # 28. 수변 도시의 일몰
+    "Surrealism art of a city skyline growing out of an open book", # 29. 초현실주의 (책에서 자라는 도시)
+    "Dynamic time-lapse style photography of a busy city intersection" # 30. 타임랩스 스타일 교차로
+]
+
 # ====================== 재시도 로직 ======================
 def call_gemini_with_retry(prompt: str) -> Optional[str]:
     """
@@ -156,18 +190,22 @@ def get_real_estate_topic(json_path="topics.json"):
     return "부동산 투자", "2026년 하반기 부동산 시장 핵심 전략"
 
 
-# ====================== 이미지 생성 (무료 API로 교체 - 랜덤 시드 적용) ======================
+# ====================== 이미지 생성 (무료 API로 교체 - 스타일 다변화 적용) ======================
 def generate_image_hf(prompt):
     print(f"🎨 이미지 생성 시작 (무료 API - Pollinations 사용)...")
 
-    # URL에 맞게 프롬프트 인코딩
-    full_prompt = f"A high-quality, professional real estate and wealth growth illustration, {prompt}, 4k resolution, cinematic lighting, no text"
+    # 🎲 30개의 스타일 중 하나를 랜덤으로 선택
+    chosen_style = random.choice(IMAGE_STYLES)
+    print(f"  👉 선택된 이미지 스타일: {chosen_style}")
+
+    # 선택된 스타일과 제미나이가 뽑은 프롬프트를 결합하여 완벽히 다른 느낌 연출
+    full_prompt = f"{chosen_style}, relating to {prompt}, high quality masterpiece, cinematic, no text, no letters"
     encoded_prompt = urllib.parse.quote(full_prompt)
 
-    # 🎲 무작위 시드(seed) 값을 생성하여 매번 다른 이미지가 나오도록 강제
+    # 무작위 시드(seed) 값을 생성하여 캐싱 방지
     random_seed = random.randint(1, 9999999)
 
-    # 16:9 비율(1024x576)의 이미지 생성 URL (+ 랜덤 시드 추가)
+    # 16:9 비율(1024x576)의 이미지 생성 URL
     url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=576&nologo=true&seed={random_seed}"
 
     for attempt in range(3):
