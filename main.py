@@ -252,51 +252,34 @@ def generate_content(category, topic):
     print(f"✍️ [SEO & AdSense 모드] 심층 분석 리포트 생성 중: {topic}")
 
     prompt = f"""
-    당신은 대한민국 최고의 부동산 실전 투자 블로그 '부의 지름길'의 수석 애널리스트입니다. 
+    당신은 10년 차 실전 부동산 투자자이자 블로거입니다.
     주제: "{topic}" (카테고리: {category})
     
     --- MISSION ---
-    구글 애드센스 승인과 검색 상위 노출을 위해 4,000자 이상의 압도적 퀄리티를 가진 리포트를 작성하세요.
+    구글 애드센스 승인과 SEO 상위 노출을 위해 독자에게 진정성 있고 실질적인 도움을 주는 고품질 포스팅을 작성하세요.
 
-    --- SEO & 전문성 가이드라인 ---
-    1. 분량: 공백 제외 4,000자 이상의 매우 상세한 정보.
-    2. 전문 데이터: 2026년 현재 시행 중인 부동산 법령, 구체적 수치(용적률, 공시지가, 취득세율 등) 인용.
-    3. 구조: HTML 태그(h2, h3, p, strong, table, blockquote)를 적극 사용.
-    4. 독창성: AI 말투 지양. 실제 발로 뛴 임장 보고서처럼 생생한 통찰력을 포함할 것.
-    5. FAQ: 검색자가 궁금해할 질문 3가지와 답변을 포함하여 스키마 데이터 가점 확보.
+    --- SEO & E-E-A-T 가이드라인 ---
+    1. 독창성과 경험(Experience): 기계적인 정보 나열을 피하고, 실제 투자 경험담이나 구체적인 사례를 들려주듯 자연스럽게 작성하세요. "안녕하십니까", "들어가며", "마치며", "결론적으로" 같은 전형적인 AI 말투는 절대 금지합니다.
+    2. 가치 있는 정보(Expertise): 2026년 기준 최신 법령, 실거래가 흐름, 세금 계산 등 구체적이고 실용적인 데이터를 포함하세요.
+    3. 가독성: 문단은 짧게(2~4문장) 나누고, 핵심 키워드나 중요한 문장은 <strong>태그로 강조하세요. 글만 빽빽하지 않게 리스트(<ul>, <li>)와 표(<table>)를 적절히 섞어 쓰세요.
+    4. 자연스러운 흐름: 기계적인 1, 2, 3 번호 매기기 소제목보다는, 독자의 호기심을 자극하는 문장형 소제목(<h2>, <h3>)을 사용하세요.
 
-    --- 출력 구조 (엄수) ---
-    [FEATURED_IMAGE_PROMPT: (영문 프롬프트 10단어)]
-    [TAGS: 태그1, 태그2, 태그3]
-    [META_DESC: (150자 이내의 검색 결과 요약문)]
+    --- 출력 형식 (HTML) ---
+    [FEATURED_IMAGE_PROMPT: (본문 내용을 시각적으로 표현하는 영문 프롬프트 10단어)]
+    [TAGS: 태그1, 태그2, 태그3, 태그4]
+    [META_DESC: (검색엔진 노출용 150자 이내의 흥미로운 요약문)]
 
     <article>
-        <header><h1>[강력한 클릭 유도 제목]</h1></header>
-        <section>
-            <h2>들어가며: {topic} 분석의 필요성</h2>
-            <p>[전문적이고 공감대 형성하는 서론]</p>
-        </section>
-        <section>
-            <h2>1. 정책 및 핵심 지표 정밀 분석</h2>
-            <p>[상세 내용]</p>
-            <blockquote>이 섹션의 핵심 내용을 한 줄로 요약하는 전문가의 한마디</blockquote>
-        </section>
-        <section>
-            <h2>2. 실전 투자 수익 시뮬레이션</h2>
-            <table border="1" style="width:100%; border-collapse: collapse; margin: 20px 0; text-align: center;">
-                [주제 관련 비교 데이터 또는 수치 테이블]
-            </table>
-        </section>
-        <section>
-            <h2>3. 자주 묻는 질문(FAQ) ❓</h2>
-            <h3>Q1. [질문 1]</h3><p>A1. [상세 답변]</p>
-            <h3>Q2. [질문 2]</h3><p>A2. [상세 답변]</p>
-            <h3>Q3. [질문 3]</h3><p>A3. [상세 답변]</p>
-        </section>
-        <section>
-            <h2>마치며: 수석 분석가의 최종 제언</h2>
-            <p>[인사이트 가득한 결론]</p>
-        </section>
+        <h1>[자연스럽고 호기심 유발하는 제목 (예: "토지 경매, 용도지역만 봤다간 큰일 나는 이유")]</h1>
+        
+        <div class="summary-box">
+            <p><strong>💡 핵심 요약:</strong> [META_DESC에서 작성한 요약문을 바탕으로 독자가 얻어갈 정보를 자연스럽게 풀어쓰기]</p>
+        </div>
+
+        [본문 내용: h2, h3, p, ul, li, table 태그를 자유롭게 사용하여 논리적으로 전개. 서론-본론-결론 구조를 갖추되 자연스럽게 연결될 것.]
+
+        <h2>자주 묻는 질문(FAQ)</h2>
+        [Q&A 형태로 2~3가지 핵심 질문과 답변 배치]
     </article>
     """
 
@@ -318,7 +301,15 @@ def generate_content(category, topic):
 
     article_start = content.find('<article>')
     body = content[article_start:].strip() if article_start != -1 else content
-    title = body[body.find('<h1>')+4 : body.find('</h1>')].strip() if '<h1>' in body else topic
+    
+    title_start = body.find('<h1>')
+    title_end = body.find('</h1>')
+    if title_start != -1 and title_end != -1:
+        title = body[title_start+4 : title_end].strip()
+        # 본문에 <h1> 태그가 남아있으면 블로그 제목과 중복되어 SEO에 악영향을 줌. 본문에서 제거.
+        body = body[:title_start] + body[title_end+5:]
+    else:
+        title = topic
 
     return title, body, dynamic_tags, image_prompt
 
@@ -367,14 +358,17 @@ def post_to_blogger(title, content, main_category, dynamic_tags, image_url=None)
       .wealth-container h3 {{ margin-top: 40px; margin-bottom: 15px; font-size: 1.4em; color: #2c5282; font-weight: 700; background: #f0f4f8; padding: 12px 18px; border-radius: 8px; }}
       .wealth-container p {{ margin-bottom: 25px; font-size: 17px; text-align: justify; }}
       .wealth-container blockquote {{ border-left: 5px solid #1a365d; background: #f9fafb; padding: 20px; font-style: italic; color: #4a5568; margin: 30px 0; }}
+      .summary-box {{ background-color: #f8f9fa; border-left: 4px solid #2b6cb0; padding: 15px 20px; margin: 20px 0 30px 0; border-radius: 4px; font-size: 1.05em; color: #2d3748; line-height: 1.6; }}
       
       .wealth-callout {{
         background-color: #f8fafc; border: 2px solid #e2e8f0; border-left: 8px solid #1a365d;
-        padding: 30px; border-radius: 12px; margin: 60px 0 40px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        padding: 30px; border-radius: 12px; margin: 60px 0 20px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.05);
       }}
       .wealth-callout-title {{ display: block; font-size: 1.25em; font-weight: 800; color: #1a365d; margin-bottom: 15px; }}
       .wealth-callout-text {{ font-size: 16px; color: #4a5568; }}
       .wealth-callout-text strong {{ color: #c53030; }}
+      
+      .wealth-disclaimer {{ margin-top: 20px; padding: 15px; background: #fff5f5; border: 1px solid #fed7d7; border-radius: 8px; font-size: 0.9em; color: #c53030; line-height: 1.5; }}
 
       .wealth-footer {{
         display: flex; justify-content: space-between; align-items: center;
@@ -396,6 +390,10 @@ def post_to_blogger(title, content, main_category, dynamic_tags, image_url=None)
           부동산의 흐름을 읽지 못하면 자본주의의 파도에 휩쓸리기 쉽습니다. <strong>부의 지름길</strong>은 단순한 뉴스를 넘어, 당신의 자산을 지키고 증식시킬 실전 인사이트를 제공합니다.<br>
           혼란스러운 시장 속에서도 흔들리지 않는 <strong>명확한 투자 지도</strong>, 지금 바로 매일 업데이트되는 전문 리포트로 확인하세요. 🏠💰
         </p>
+      </div>
+      
+      <div class="wealth-disclaimer">
+        <strong>※ 면책 조항 (Disclaimer):</strong> 본 포스팅은 개인적인 투자 경험과 학습을 바탕으로 작성된 정보 제공 목적의 글입니다. 부동산 시장은 변동성이 크며, 모든 투자의 최종 판단과 결과에 대한 책임은 투자자 본인에게 있습니다.
       </div>
       
       <div class="wealth-footer">
